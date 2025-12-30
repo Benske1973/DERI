@@ -1,7 +1,6 @@
 # backtester.py - Backtesting module voor strategie validatie
 import requests
 import pandas as pd
-import pandas_ta as ta
 import sqlite3
 import time
 from datetime import datetime, timedelta
@@ -154,8 +153,8 @@ class Backtester:
         if self.htf_data is None or len(self.htf_data) < EMA_LENGTH + 50:
             return {'error': 'Onvoldoende HTF data'}
 
-        # Bereken EMA
-        self.htf_data['ema'] = ta.ema(self.htf_data['c'], length=EMA_LENGTH)
+        # Bereken EMA (handmatig)
+        self.htf_data['ema'] = self.htf_data['c'].ewm(span=EMA_LENGTH, adjust=False).mean()
 
         # Loop door data en zoek setups
         for i in range(EMA_LENGTH + 10, len(self.htf_data) - 20):

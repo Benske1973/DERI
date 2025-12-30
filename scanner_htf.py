@@ -1,7 +1,6 @@
 # scanner_htf.py - HTF Scanner met dynamische symbols en bullish/bearish setups
 import requests
 import pandas as pd
-import pandas_ta as ta
 import sqlite3
 import time
 from config import (
@@ -12,6 +11,11 @@ from config import (
 from logger import get_scanner_logger
 
 log = get_scanner_logger()
+
+
+def calculate_ema(series: pd.Series, length: int) -> pd.Series:
+    """Bereken EMA handmatig (zonder pandas_ta)."""
+    return series.ewm(span=length, adjust=False).mean()
 
 
 def api_request(url: str, retries: int = MAX_RETRIES) -> dict:
@@ -131,7 +135,7 @@ def analyze_symbol(sym: str, conn: sqlite3.Connection) -> bool:
             return False
 
         # Bereken EMA voor trend
-        df['ema'] = ta.ema(df['c'], length=EMA_LENGTH)
+        df['ema'] = calculate_ema(df['c'], EMA_LENGTH)
         current_price = df['c'].iloc[-1]
         current_ema = df['ema'].iloc[-1]
 
