@@ -21,13 +21,15 @@ def run_scanner():
 
     for sym in symbols:
         try:
-            url = f"https://api.kucoin.com/api/v1/market/candles?symbol={sym}&type=4h"
+            url = f"https://api.kucoin.com/api/v1/market/candles?symbol={sym}&type=4hour"
             data = requests.get(url).json()['data']
             df = pd.DataFrame(data, columns=['ts','o','c','h','l','v','a']).astype(float).iloc[::-1]
             
             # Trend filter
             df['ema50'] = ta.ema(df['c'], length=50)
-            if df['c'].iloc[-1] < df['ema50'].iloc[-1]: continue # Alleen bullish in uptrend
+            if df['c'].iloc[-1] < df['ema50'].iloc[-1]:
+                print(f"   {sym}: Overgeslagen (prijs onder EMA50)")
+                continue # Alleen bullish in uptrend
 
             setup_type, ft, fb, ot, ob = detect_smc_setup(df)
             
@@ -35,7 +37,11 @@ def run_scanner():
                 c.execute("INSERT OR REPLACE INTO signals (symbol, trend, fvg_top, fvg_bottom, ob_top, ob_bottom, status) VALUES (?, ?, ?, ?, ?, ?, ?)",
                           (sym, setup_type, ft, fb, ot, ob, 'SCANNING'))
                 print(f"🔎 POI opgeslagen voor {sym} (FVG: {fb}-{ft})")
-        except: continue
+            else:
+                print(f"   {sym}: Geen FVG setup gevonden")
+        except Exception as e:
+            print(f"⚠️ Fout bij {sym}: {e}")
+            continue
     
     conn.commit()
     conn.close()

@@ -49,8 +49,8 @@ async def handle_ws():
                                     c.execute("UPDATE signals SET status='TAPPED' WHERE symbol=?", (symbol,))
                                     conn.commit()
                                     print(f"🎯 ALERT: {symbol} tapt de zone op {price}! Executor pakt het over.")
-                            
-                            conn.close()
+
+                            conn.close()  # Altijd sluiten, ook als geen row gevonden
                             
                     except asyncio.TimeoutError:
                         # Stuur een ping om de verbinding levend te houden
