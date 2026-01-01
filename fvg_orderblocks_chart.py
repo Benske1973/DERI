@@ -250,19 +250,23 @@ def create_chart(symbol: str, timeframe: str, filter_pct: float = 0.5, use_heiki
     colors = ['#14be94' if df.loc[i, c_col] >= df.loc[i, o_col] else '#c21919'
               for i in df.index]
 
+    # Convert datetime to string for better compatibility
+    x_data = df['datetime'].dt.strftime('%Y-%m-%d %H:%M:%S').tolist()
+
     # Add candlesticks
     fig.add_trace(
         go.Candlestick(
-            x=df['datetime'],
-            open=df[o_col],
-            high=df[h_col],
-            low=df[l_col],
-            close=df[c_col],
+            x=x_data,
+            open=df[o_col].tolist(),
+            high=df[h_col].tolist(),
+            low=df[l_col].tolist(),
+            close=df[c_col].tolist(),
             name='Price',
-            increasing_line_color='#14be94',
-            decreasing_line_color='#c21919',
-            increasing_fillcolor='#14be94',
-            decreasing_fillcolor='#c21919',
+            increasing_line_color='#26a69a',
+            increasing_fillcolor='#26a69a',
+            decreasing_line_color='#ef5350',
+            decreasing_fillcolor='#ef5350',
+            line=dict(width=1),
         ),
         row=1, col=1
     )
@@ -272,8 +276,8 @@ def create_chart(symbol: str, timeframe: str, filter_pct: float = 0.5, use_heiki
         if block.start_idx >= len(df):
             continue
 
-        x0 = df.loc[block.start_idx, 'datetime']
-        x1 = df.loc[len(df)-1, 'datetime']
+        x0 = df.loc[block.start_idx, 'datetime'].strftime('%Y-%m-%d %H:%M:%S')
+        x1 = df.loc[len(df)-1, 'datetime'].strftime('%Y-%m-%d %H:%M:%S')
 
         color = COL_BULL if block.is_bull else COL_BEAR
         border = COL_BULL_BORDER if block.is_bull else COL_BEAR_BORDER
@@ -288,6 +292,7 @@ def create_chart(symbol: str, timeframe: str, filter_pct: float = 0.5, use_heiki
             y0=block.bottom, y1=block.top,
             fillcolor=color,
             line=dict(color=border, width=1),
+            layer="below",  # Draw behind candles
             row=1, col=1
         )
 
@@ -305,8 +310,8 @@ def create_chart(symbol: str, timeframe: str, filter_pct: float = 0.5, use_heiki
     # Add volume bars
     fig.add_trace(
         go.Bar(
-            x=df['datetime'],
-            y=df['volume'],
+            x=x_data,
+            y=df['volume'].tolist(),
             name='Volume',
             marker_color=colors,
             opacity=0.5
@@ -317,18 +322,22 @@ def create_chart(symbol: str, timeframe: str, filter_pct: float = 0.5, use_heiki
     # Update layout
     candle_type = "Heikin Ashi" if use_heikin_ashi else "Regular"
     fig.update_layout(
-        title=f'{symbol} - {timeframe} - {candle_type} - FVG Order Blocks ({len(blocks)} zones)',
+        title=dict(
+            text=f'{symbol} - {timeframe} - {candle_type} - FVG Order Blocks ({len(blocks)} zones)',
+            font=dict(color='#d1d4dc')
+        ),
         template='plotly_dark',
         paper_bgcolor='#131722',
         plot_bgcolor='#131722',
-        xaxis_rangeslider_visible=False,
         height=650,
         showlegend=False,
-        margin=dict(l=50, r=50, t=50, b=50),
+        margin=dict(l=60, r=60, t=50, b=50),
+        xaxis=dict(rangeslider=dict(visible=False)),
+        xaxis2=dict(rangeslider=dict(visible=False)),
     )
 
-    fig.update_xaxes(gridcolor='#1e222d', showgrid=True)
-    fig.update_yaxes(gridcolor='#1e222d', showgrid=True)
+    fig.update_xaxes(gridcolor='#1e222d', showgrid=True, showline=True, linecolor='#363a45')
+    fig.update_yaxes(gridcolor='#1e222d', showgrid=True, showline=True, linecolor='#363a45', side='right')
 
     # Generate unique div ID
     div_id = f"chart_{uuid.uuid4().hex[:8]}"
