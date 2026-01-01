@@ -262,11 +262,15 @@ def create_chart(symbol: str, timeframe: str, filter_pct: float = 0.5, use_heiki
     # Reset index
     df = df.reset_index(drop=True)
 
+    print(f"[DEBUG] Loaded {len(df)} candles for {symbol}")
+    print(f"[DEBUG] Price range: {df['low'].min():.4f} - {df['high'].max():.4f}")
+
     # Calculate Heikin Ashi
     df = calculate_heikin_ashi(df)
 
     # Detect FVG Order Blocks
     blocks = detect_fvg_orderblocks(df, filter_pct)
+    print(f"[DEBUG] Found {len(blocks)} FVG blocks")
 
     # Choose which candles to display
     if use_heikin_ashi:
@@ -274,17 +278,26 @@ def create_chart(symbol: str, timeframe: str, filter_pct: float = 0.5, use_heiki
     else:
         o_col, h_col, l_col, c_col = 'open', 'high', 'low', 'close'
 
+    # Convert to lists for Plotly (IMPORTANT!)
+    x_data = list(range(len(df)))
+    open_data = df[o_col].tolist()
+    high_data = df[h_col].tolist()
+    low_data = df[l_col].tolist()
+    close_data = df[c_col].tolist()
+
+    print(f"[DEBUG] Sample prices: O={open_data[0]:.4f} H={high_data[0]:.4f} L={low_data[0]:.4f} C={close_data[0]:.4f}")
+
     # Create simple figure (no subplots)
     fig = go.Figure()
 
-    # Add candlesticks
+    # Add candlesticks with explicit list data
     fig.add_trace(
         go.Candlestick(
-            x=df.index,
-            open=df[o_col],
-            high=df[h_col],
-            low=df[l_col],
-            close=df[c_col],
+            x=x_data,
+            open=open_data,
+            high=high_data,
+            low=low_data,
+            close=close_data,
             name='Price',
             increasing_line_color='#26a69a',
             increasing_fillcolor='#26a69a',
@@ -336,6 +349,13 @@ def create_chart(symbol: str, timeframe: str, filter_pct: float = 0.5, use_heiki
     tickvals = list(range(0, len(df), 20))
     ticktext = [df.loc[i, 'datetime'].strftime('%H:%M') for i in tickvals if i < len(df)]
 
+    # Calculate Y-axis range with padding
+    y_min = min(low_data)
+    y_max = max(high_data)
+    y_padding = (y_max - y_min) * 0.05
+
+    print(f"[DEBUG] Y-axis range: {y_min:.4f} - {y_max:.4f}")
+
     fig.update_layout(
         title=f'{symbol} - {timeframe} - {candle_type} - FVG Order Blocks ({len(blocks)} zones)',
         template='plotly_dark',
@@ -357,6 +377,7 @@ def create_chart(symbol: str, timeframe: str, filter_pct: float = 0.5, use_heiki
             gridcolor='#1e222d',
             showgrid=True,
             side='right',
+            range=[y_min - y_padding, y_max + y_padding],
         ),
     )
 
