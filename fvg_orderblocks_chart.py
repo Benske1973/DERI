@@ -9,6 +9,7 @@ import numpy as np
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import json
+import uuid
 from datetime import datetime
 from dataclasses import dataclass
 from typing import List, Tuple, Optional
@@ -79,6 +80,7 @@ def get_candles(symbol: str, timeframe: str, limit: int = 500) -> pd.DataFrame:
         data = r.json()
 
         if data.get('code') != '200000' or not data.get('data'):
+            print(f"API error: {data}")
             return pd.DataFrame()
 
         # KuCoin format: [timestamp, open, close, high, low, volume, turnover]
@@ -111,10 +113,12 @@ def calculate_heikin_ashi(df: pd.DataFrame) -> pd.DataFrame:
 
     # HA Open = (Previous HA Open + Previous HA Close) / 2
     ha['ha_open'] = 0.0
-    ha.loc[0, 'ha_open'] = (df.loc[0, 'open'] + df.loc[0, 'close']) / 2
+    ha.loc[ha.index[0], 'ha_open'] = (df.loc[df.index[0], 'open'] + df.loc[df.index[0], 'close']) / 2
 
     for i in range(1, len(ha)):
-        ha.loc[i, 'ha_open'] = (ha.loc[i-1, 'ha_open'] + ha.loc[i-1, 'ha_close']) / 2
+        idx = ha.index[i]
+        prev_idx = ha.index[i-1]
+        ha.loc[idx, 'ha_open'] = (ha.loc[prev_idx, 'ha_open'] + ha.loc[prev_idx, 'ha_close']) / 2
 
     # HA High = max(High, HA Open, HA Close)
     ha['ha_high'] = ha[['high', 'ha_open', 'ha_close']].max(axis=1)
@@ -139,6 +143,8 @@ def detect_fvg_orderblocks(df: pd.DataFrame, filter_pct: float = 0.5) -> List[Or
     if len(df) < 3:
         return blocks
 
+    df = df.reset_index(drop=True)
+
     # Use regular OHLC for FVG detection
     for i in range(2, len(df)):
         high_2 = df.loc[i-2, 'high']
@@ -149,7 +155,6 @@ def detect_fvg_orderblocks(df: pd.DataFrame, filter_pct: float = 0.5) -> List[Or
         low_0 = df.loc[i, 'low']
 
         # Bullish FVG: high[2] < low AND high[2] < high[1] AND low[2] < low
-        # Gap tussen candle -2 high en candle 0 low
         filt_up = (low_0 - high_2) / low_0 * 100 if low_0 > 0 else 0
 
         is_bull_gap = (high_2 < low_0 and
@@ -160,8 +165,8 @@ def detect_fvg_orderblocks(df: pd.DataFrame, filter_pct: float = 0.5) -> List[Or
         if is_bull_gap:
             blocks.append(OrderBlock(
                 start_idx=i-1,
-                top=low_0,          # Top of gap
-                bottom=high_2,      # Bottom of gap (order block zone)
+                top=low_0,
+                bottom=high_2,
                 is_bull=True,
                 gap_pct=filt_up,
                 broken=False
@@ -178,8 +183,8 @@ def detect_fvg_orderblocks(df: pd.DataFrame, filter_pct: float = 0.5) -> List[Or
         if is_bear_gap:
             blocks.append(OrderBlock(
                 start_idx=i-1,
-                top=low_2,          # Top of order block zone
-                bottom=high_0,      # Bottom of gap
+                top=low_2,
+                bottom=high_0,
                 is_bull=False,
                 gap_pct=filt_dn,
                 broken=False
@@ -189,23 +194,20 @@ def detect_fvg_orderblocks(df: pd.DataFrame, filter_pct: float = 0.5) -> List[Or
     for block in blocks:
         for i in range(block.start_idx + 2, len(df)):
             if block.is_bull:
-                # Bullish block broken when price goes below bottom
                 if df.loc[i, 'high'] < block.bottom:
                     block.broken = True
                     block.break_idx = i
                     break
             else:
-                # Bearish block broken when price goes above top
                 if df.loc[i, 'low'] > block.top:
                     block.broken = True
                     block.break_idx = i
                     break
 
-    # Filter: keep only unbroken or limit amount
+    # Filter
     if not SHOW_BROKEN:
         blocks = [b for b in blocks if not b.broken]
 
-    # Keep last N blocks per type
     bull_blocks = [b for b in blocks if b.is_bull][-BOX_AMOUNT:]
     bear_blocks = [b for b in blocks if not b.is_bull][-BOX_AMOUNT:]
 
@@ -222,12 +224,15 @@ def create_chart(symbol: str, timeframe: str, filter_pct: float = 0.5, use_heiki
     # Get data
     df = get_candles(symbol, timeframe, limit=300)
     if df.empty:
-        return "<p>Error loading data</p>"
+        return "<div style='color:#ff5252;padding:50px;text-align:center;'>Error loading data for " + symbol + "</div>"
+
+    # Reset index
+    df = df.reset_index(drop=True)
 
     # Calculate Heikin Ashi
     df = calculate_heikin_ashi(df)
 
-    # Detect FVG Order Blocks (always use regular candles for detection)
+    # Detect FVG Order Blocks
     blocks = detect_fvg_orderblocks(df, filter_pct)
 
     # Choose which candles to display
@@ -268,12 +273,11 @@ def create_chart(symbol: str, timeframe: str, filter_pct: float = 0.5, use_heiki
             continue
 
         x0 = df.loc[block.start_idx, 'datetime']
-        x1 = df.loc[len(df)-1, 'datetime']  # Extend to current
+        x1 = df.loc[len(df)-1, 'datetime']
 
         color = COL_BULL if block.is_bull else COL_BEAR
         border = COL_BULL_BORDER if block.is_bull else COL_BEAR_BORDER
 
-        # Adjust opacity if broken
         if block.broken:
             color = "rgba(128, 128, 128, 0.3)"
             border = "#808080"
@@ -287,7 +291,6 @@ def create_chart(symbol: str, timeframe: str, filter_pct: float = 0.5, use_heiki
             row=1, col=1
         )
 
-        # Add percentage label
         label_text = f"{block.gap_pct:.2f}%"
         fig.add_annotation(
             x=x1,
@@ -314,21 +317,32 @@ def create_chart(symbol: str, timeframe: str, filter_pct: float = 0.5, use_heiki
     # Update layout
     candle_type = "Heikin Ashi" if use_heikin_ashi else "Regular"
     fig.update_layout(
-        title=f'{symbol} - {timeframe} - {candle_type} - FVG Order Blocks',
+        title=f'{symbol} - {timeframe} - {candle_type} - FVG Order Blocks ({len(blocks)} zones)',
         template='plotly_dark',
         paper_bgcolor='#131722',
         plot_bgcolor='#131722',
         xaxis_rangeslider_visible=False,
-        height=700,
+        height=650,
         showlegend=False,
         margin=dict(l=50, r=50, t=50, b=50),
     )
 
-    # Update axes
     fig.update_xaxes(gridcolor='#1e222d', showgrid=True)
     fig.update_yaxes(gridcolor='#1e222d', showgrid=True)
 
-    return fig.to_html(full_html=False, include_plotlyjs='cdn')
+    # Generate unique div ID
+    div_id = f"chart_{uuid.uuid4().hex[:8]}"
+
+    # Return JSON data for Plotly.react()
+    chart_json = fig.to_json()
+
+    return f'''
+    <div id="{div_id}" style="width:100%;height:650px;"></div>
+    <script>
+        var chartData = {chart_json};
+        Plotly.react("{div_id}", chartData.data, chartData.layout);
+    </script>
+    '''
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -340,6 +354,7 @@ HTML_TEMPLATE = '''
 <html>
 <head>
     <title>FVG Order Blocks Scanner</title>
+    <script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
     <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
@@ -381,7 +396,7 @@ HTML_TEMPLATE = '''
             font-size: 12px;
             text-transform: uppercase;
         }
-        select, input {
+        select, input[type="number"] {
             background: #2a2e39;
             border: 1px solid #363a45;
             color: #d1d4dc;
@@ -445,6 +460,7 @@ HTML_TEMPLATE = '''
             background: #131722;
             border-radius: 8px;
             overflow: hidden;
+            min-height: 650px;
         }
         .loading {
             text-align: center;
@@ -455,17 +471,19 @@ HTML_TEMPLATE = '''
             display: flex;
             align-items: center;
             gap: 10px;
+            padding-top: 5px;
         }
         .checkbox-group input[type="checkbox"] {
             width: 18px;
             height: 18px;
             min-width: 18px;
+            accent-color: #14be94;
         }
         .legend {
             display: flex;
             gap: 30px;
             justify-content: center;
-            margin-top: 15px;
+            margin: 15px 0;
             font-size: 13px;
         }
         .legend-item {
@@ -480,6 +498,12 @@ HTML_TEMPLATE = '''
         }
         .bull-box { background: rgba(20, 190, 148, 0.6); border: 1px solid #14be94; }
         .bear-box { background: rgba(194, 25, 25, 0.6); border: 1px solid #c21919; }
+        .status {
+            text-align: center;
+            padding: 10px;
+            color: #787b86;
+            font-size: 12px;
+        }
     </style>
 </head>
 <body>
@@ -515,10 +539,10 @@ HTML_TEMPLATE = '''
             </div>
 
             <div class="control-group">
-                <label>&nbsp;</label>
+                <label>Display</label>
                 <div class="checkbox-group">
                     <input type="checkbox" id="heikin" {% if use_ha %}checked{% endif %}>
-                    <label for="heikin" style="text-transform: none; font-size: 14px;">Heikin Ashi</label>
+                    <label for="heikin" style="text-transform: none; font-size: 14px; color: #d1d4dc;">Heikin Ashi</label>
                 </div>
             </div>
 
@@ -542,40 +566,66 @@ HTML_TEMPLATE = '''
         <div class="chart-container" id="chart">
             {{ chart_html|safe }}
         </div>
+
+        <div class="status" id="status">Ready</div>
     </div>
 
     <script>
         $(document).ready(function() {
             $('#symbol').select2({
                 placeholder: 'Search coin...',
-                allowClear: true
+                allowClear: true,
+                width: '200px'
             });
         });
 
         function loadChart() {
             const btn = document.getElementById('loadBtn');
             const chart = document.getElementById('chart');
+            const status = document.getElementById('status');
 
             btn.disabled = true;
             btn.textContent = 'Loading...';
-            chart.innerHTML = '<div class="loading">Loading chart...</div>';
+            status.textContent = 'Loading chart data...';
+            chart.innerHTML = '<div class="loading">⏳ Loading chart...</div>';
 
             const symbol = document.getElementById('symbol').value;
             const timeframe = document.getElementById('timeframe').value;
             const filter = document.getElementById('filter').value;
             const heikin = document.getElementById('heikin').checked;
 
-            fetch(`/chart?symbol=${symbol}&timeframe=${timeframe}&filter=${filter}&ha=${heikin}`)
-                .then(response => response.text())
+            const url = `/chart?symbol=${encodeURIComponent(symbol)}&timeframe=${timeframe}&filter=${filter}&ha=${heikin}`;
+
+            console.log('Loading:', url);
+
+            fetch(url)
+                .then(response => {
+                    if (!response.ok) throw new Error('Network error');
+                    return response.text();
+                })
                 .then(html => {
+                    console.log('Received HTML length:', html.length);
                     chart.innerHTML = html;
+
+                    // Execute any scripts in the response
+                    const scripts = chart.querySelectorAll('script');
+                    scripts.forEach(script => {
+                        const newScript = document.createElement('script');
+                        newScript.textContent = script.textContent;
+                        document.body.appendChild(newScript);
+                        document.body.removeChild(newScript);
+                    });
+
                     btn.disabled = false;
                     btn.textContent = 'Load Chart';
+                    status.textContent = `Loaded: ${symbol} - ${timeframe} at ${new Date().toLocaleTimeString()}`;
                 })
                 .catch(err => {
-                    chart.innerHTML = '<div class="loading">Error loading chart</div>';
+                    console.error('Error:', err);
+                    chart.innerHTML = '<div class="loading" style="color:#ff5252;">❌ Error loading chart: ' + err.message + '</div>';
                     btn.disabled = false;
                     btn.textContent = 'Load Chart';
+                    status.textContent = 'Error: ' + err.message;
                 });
         }
     </script>
@@ -612,11 +662,13 @@ def get_chart():
     filter_pct = float(request.args.get('filter', 0.5))
     use_ha = request.args.get('ha', 'true').lower() == 'true'
 
+    print(f"Chart request: {symbol} {timeframe} filter={filter_pct} ha={use_ha}")
+
     return create_chart(symbol, timeframe, filter_pct, use_ha)
 
 
 @app.route('/symbols')
-def get_symbols():
+def get_symbols_route():
     return jsonify(get_all_symbols())
 
 
@@ -635,4 +687,4 @@ if __name__ == '__main__':
 ║  • Adjustable gap filter %                                                   ║
 ╚══════════════════════════════════════════════════════════════════════════════╝
     """)
-    app.run(debug=True, port=5000)
+    app.run(debug=True, port=5000, host='0.0.0.0')
