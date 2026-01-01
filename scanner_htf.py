@@ -23,6 +23,10 @@ def detect_smc_setup(df):
     for i in range(len(df)-1, 5, -1):
         current_atr = atr.iloc[i-2]
         
+        # Skip als ATR NaN is
+        if pd.isna(current_atr):
+            continue
+        
         # Bullish FVG: Low[i] > High[i-2]
         if df['l'].iloc[i] > df['h'].iloc[i-2]:
             fvg_top = df['l'].iloc[i]
