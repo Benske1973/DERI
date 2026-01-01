@@ -133,10 +133,29 @@ def calculate_heikin_ashi(df: pd.DataFrame) -> pd.DataFrame:
 #                      FVG DETECTION (BigBeluga Logic)
 # ═══════════════════════════════════════════════════════════════
 
+def calculate_atr(df: pd.DataFrame, period: int = 200) -> pd.Series:
+    """Calculate Average True Range"""
+    high = df['high']
+    low = df['low']
+    close = df['close']
+
+    tr1 = high - low
+    tr2 = abs(high - close.shift(1))
+    tr3 = abs(low - close.shift(1))
+
+    tr = pd.concat([tr1, tr2, tr3], axis=1).max(axis=1)
+    atr = tr.rolling(window=period, min_periods=1).mean()
+
+    return atr
+
+
 def detect_fvg_orderblocks(df: pd.DataFrame, filter_pct: float = 0.5) -> List[OrderBlock]:
     """
-    Detecteer Fair Value Gaps (FVG) Order Blocks
+    Detecteer Fair Value Gaps (FVG) en creëer Order Blocks
     Gebaseerd op BigBeluga's Pine Script logica
+
+    FVG = Gap tussen high[2] en low[0] (bullish) of low[2] en high[0] (bearish)
+    Order Block = Zone onder/boven de gap waar prijs verwacht wordt terug te keren
     """
     blocks = []
 
@@ -144,6 +163,9 @@ def detect_fvg_orderblocks(df: pd.DataFrame, filter_pct: float = 0.5) -> List[Or
         return blocks
 
     df = df.reset_index(drop=True)
+
+    # Calculate ATR for order block size
+    atr = calculate_atr(df, 200)
 
     # Use regular OHLC for FVG detection
     for i in range(2, len(df)):
@@ -153,8 +175,11 @@ def detect_fvg_orderblocks(df: pd.DataFrame, filter_pct: float = 0.5) -> List[Or
         low_1 = df.loc[i-1, 'low']
         high_0 = df.loc[i, 'high']
         low_0 = df.loc[i, 'low']
+        current_atr = atr.iloc[i] if i < len(atr) else atr.iloc[-1]
 
-        # Bullish FVG: high[2] < low AND high[2] < high[1] AND low[2] < low
+        # ═══ BULLISH FVG ═══
+        # Gap: high[2] < low[0] (candle -2 high is below current low)
+        # This means there's a gap up that wasn't filled
         filt_up = (low_0 - high_2) / low_0 * 100 if low_0 > 0 else 0
 
         is_bull_gap = (high_2 < low_0 and
@@ -163,16 +188,20 @@ def detect_fvg_orderblocks(df: pd.DataFrame, filter_pct: float = 0.5) -> List[Or
                        filt_up > filter_pct)
 
         if is_bull_gap:
+            # Order Block is at high[2] down to high[2] - ATR
+            # This is the SUPPORT zone below the gap
             blocks.append(OrderBlock(
                 start_idx=i-1,
-                top=low_0,
-                bottom=high_2,
+                top=high_2,                    # Top of order block = high[2]
+                bottom=high_2 - current_atr,   # Bottom = high[2] - ATR
                 is_bull=True,
                 gap_pct=filt_up,
                 broken=False
             ))
 
-        # Bearish FVG: low[2] > high AND low[2] > low[1] AND high[2] > high
+        # ═══ BEARISH FVG ═══
+        # Gap: low[2] > high[0] (candle -2 low is above current high)
+        # This means there's a gap down that wasn't filled
         filt_dn = (low_2 - high_0) / low_2 * 100 if low_2 > 0 else 0
 
         is_bear_gap = (low_2 > high_0 and
@@ -181,10 +210,12 @@ def detect_fvg_orderblocks(df: pd.DataFrame, filter_pct: float = 0.5) -> List[Or
                        filt_dn > filter_pct)
 
         if is_bear_gap:
+            # Order Block is at low[2] up to low[2] + ATR
+            # This is the RESISTANCE zone above the gap
             blocks.append(OrderBlock(
                 start_idx=i-1,
-                top=low_2,
-                bottom=high_0,
+                top=low_2 + current_atr,       # Top = low[2] + ATR
+                bottom=low_2,                   # Bottom of order block = low[2]
                 is_bull=False,
                 gap_pct=filt_dn,
                 broken=False
@@ -194,12 +225,14 @@ def detect_fvg_orderblocks(df: pd.DataFrame, filter_pct: float = 0.5) -> List[Or
     for block in blocks:
         for i in range(block.start_idx + 2, len(df)):
             if block.is_bull:
-                if df.loc[i, 'high'] < block.bottom:
+                # Bullish block broken when price closes below bottom
+                if df.loc[i, 'close'] < block.bottom:
                     block.broken = True
                     block.break_idx = i
                     break
             else:
-                if df.loc[i, 'low'] > block.top:
+                # Bearish block broken when price closes above top
+                if df.loc[i, 'close'] > block.top:
                     block.broken = True
                     block.break_idx = i
                     break
