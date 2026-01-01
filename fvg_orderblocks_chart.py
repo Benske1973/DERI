@@ -151,11 +151,13 @@ def calculate_atr(df: pd.DataFrame, period: int = 200) -> pd.Series:
 
 def detect_fvg_orderblocks(df: pd.DataFrame, filter_pct: float = 0.5) -> List[OrderBlock]:
     """
-    Detecteer Fair Value Gaps (FVG)
+    Detecteer FVG Order Blocks - EXACT zoals BigBeluga's indicator
 
-    Een FVG is een ECHTE prijsgap waar geen handel heeft plaatsgevonden:
-    - Bullish FVG: high[2] < low[0] → gap zone van high[2] tot low[0]
-    - Bearish FVG: low[2] > high[0] → gap zone van high[0] tot low[2]
+    BigBeluga's logica:
+    1. FVG detectie: high[2] < low[0] (bullish) of low[2] > high[0] (bearish)
+    2. Extra filters: middle candle moet deel zijn van gap pattern
+    3. Order Block = body van candle[2], gelimiteerd door ATR * 0.3
+    4. Mitigation tracking: zone krimpt als prijs erin komt
     """
     blocks = []
 
@@ -164,63 +166,96 @@ def detect_fvg_orderblocks(df: pd.DataFrame, filter_pct: float = 0.5) -> List[Or
 
     df = df.reset_index(drop=True)
 
+    # Calculate ATR for order block sizing (BigBeluga uses 200 period)
+    atr = calculate_atr(df, 200)
+
     for i in range(2, len(df)):
         high_2 = df.loc[i-2, 'high']
         low_2 = df.loc[i-2, 'low']
+        high_1 = df.loc[i-1, 'high']
+        low_1 = df.loc[i-1, 'low']
         high_0 = df.loc[i, 'high']
         low_0 = df.loc[i, 'low']
+        current_atr = atr.iloc[i] if i < len(atr) else atr.iloc[-1]
 
-        # ═══ BULLISH FVG ═══
-        # Er is een gap omhoog als high[2] < low[0]
-        # De FVG zone is van high[2] (onderkant) tot low[0] (bovenkant)
-        if high_2 < low_0:
-            gap_size = low_0 - high_2
-            gap_pct = (gap_size / high_2) * 100 if high_2 > 0 else 0
+        # ═══ BULLISH FVG (BigBeluga exact logic) ═══
+        # fvg_up = high[2] < low and high[2] < high[1] and low[2] < low
+        fvg_up = (high_2 < low_0 and high_2 < high_1 and low_2 < low_0)
+
+        if fvg_up:
+            # Gap percentage filter
+            gap_pct = (low_0 - high_2) / high_2 * 100 if high_2 > 0 else 0
 
             if gap_pct > filter_pct:
+                # BigBeluga Order Block sizing:
+                # up_top = high[2]
+                # up_btm = max(high[2] - atr * 0.3, low[2])
+                ob_top = high_2
+                ob_btm = max(high_2 - current_atr * 0.3, low_2)
+
                 blocks.append(OrderBlock(
                     start_idx=i,
-                    top=low_0,      # Bovenkant van de gap
-                    bottom=high_2,  # Onderkant van de gap
+                    top=ob_top,
+                    bottom=ob_btm,
                     is_bull=True,
                     gap_pct=gap_pct,
                     broken=False
                 ))
-                print(f"[FVG] Bullish gap at {i}: {high_2:.6f} - {low_0:.6f} ({gap_pct:.2f}%)")
+                print(f"[FVG] Bullish OB at {i}: {ob_btm:.6f} - {ob_top:.6f} ({gap_pct:.2f}%)")
 
-        # ═══ BEARISH FVG ═══
-        # Er is een gap omlaag als low[2] > high[0]
-        # De FVG zone is van high[0] (onderkant) tot low[2] (bovenkant)
-        if low_2 > high_0:
-            gap_size = low_2 - high_0
-            gap_pct = (gap_size / low_2) * 100 if low_2 > 0 else 0
+        # ═══ BEARISH FVG (BigBeluga exact logic) ═══
+        # fvg_dn = low[2] > high and low[2] > low[1] and high[2] > high
+        fvg_dn = (low_2 > high_0 and low_2 > low_1 and high_2 > high_0)
+
+        if fvg_dn:
+            # Gap percentage filter
+            gap_pct = (low_2 - high_0) / low_2 * 100 if low_2 > 0 else 0
 
             if gap_pct > filter_pct:
+                # BigBeluga Order Block sizing:
+                # dn_top = min(low[2] + atr * 0.3, high[2])
+                # dn_btm = low[2]
+                ob_top = min(low_2 + current_atr * 0.3, high_2)
+                ob_btm = low_2
+
                 blocks.append(OrderBlock(
                     start_idx=i,
-                    top=low_2,      # Bovenkant van de gap
-                    bottom=high_0,  # Onderkant van de gap
+                    top=ob_top,
+                    bottom=ob_btm,
                     is_bull=False,
                     gap_pct=gap_pct,
                     broken=False
                 ))
-                print(f"[FVG] Bearish gap at {i}: {high_0:.6f} - {low_2:.6f} ({gap_pct:.2f}%)")
+                print(f"[FVG] Bearish OB at {i}: {ob_btm:.6f} - {ob_top:.6f} ({gap_pct:.2f}%)")
 
-    # Check for broken/filled gaps
+    # ═══ MITIGATION CHECK (BigBeluga style) ═══
+    # Track partial fills and full breaks
     for block in blocks:
         for i in range(block.start_idx + 1, len(df)):
             if block.is_bull:
-                # Bullish FVG filled when price trades through the gap (low enters zone)
-                if df.loc[i, 'low'] <= block.top:
-                    block.broken = True
-                    block.break_idx = i
-                    break
+                # Bullish: check if low comes into the zone
+                candle_low = df.loc[i, 'low']
+                if candle_low <= block.top:
+                    if candle_low <= block.bottom:
+                        # Fully mitigated
+                        block.broken = True
+                        block.break_idx = i
+                        break
+                    else:
+                        # Partial mitigation - shrink the zone
+                        block.top = candle_low
             else:
-                # Bearish FVG filled when price trades through the gap (high enters zone)
-                if df.loc[i, 'high'] >= block.bottom:
-                    block.broken = True
-                    block.break_idx = i
-                    break
+                # Bearish: check if high comes into the zone
+                candle_high = df.loc[i, 'high']
+                if candle_high >= block.bottom:
+                    if candle_high >= block.top:
+                        # Fully mitigated
+                        block.broken = True
+                        block.break_idx = i
+                        break
+                    else:
+                        # Partial mitigation - shrink the zone
+                        block.bottom = candle_high
 
     # Filter broken blocks
     if not SHOW_BROKEN:
