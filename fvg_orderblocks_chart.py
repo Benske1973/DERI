@@ -151,11 +151,11 @@ def calculate_atr(df: pd.DataFrame, period: int = 200) -> pd.Series:
 
 def detect_fvg_orderblocks(df: pd.DataFrame, filter_pct: float = 0.5) -> List[OrderBlock]:
     """
-    Detecteer Fair Value Gaps (FVG) en creëer Order Blocks
-    Gebaseerd op BigBeluga's Pine Script logica
+    Detecteer Fair Value Gaps (FVG)
 
-    FVG = Gap tussen high[2] en low[0] (bullish) of low[2] en high[0] (bearish)
-    Order Block = Zone onder/boven de gap waar prijs verwacht wordt terug te keren
+    Een FVG is een ECHTE prijsgap waar geen handel heeft plaatsgevonden:
+    - Bullish FVG: high[2] < low[0] → gap zone van high[2] tot low[0]
+    - Bearish FVG: low[2] > high[0] → gap zone van high[0] tot low[2]
     """
     blocks = []
 
@@ -164,83 +164,69 @@ def detect_fvg_orderblocks(df: pd.DataFrame, filter_pct: float = 0.5) -> List[Or
 
     df = df.reset_index(drop=True)
 
-    # Calculate ATR for order block size
-    atr = calculate_atr(df, 200)
-
-    # Use regular OHLC for FVG detection
     for i in range(2, len(df)):
         high_2 = df.loc[i-2, 'high']
         low_2 = df.loc[i-2, 'low']
-        high_1 = df.loc[i-1, 'high']
-        low_1 = df.loc[i-1, 'low']
         high_0 = df.loc[i, 'high']
         low_0 = df.loc[i, 'low']
-        current_atr = atr.iloc[i] if i < len(atr) else atr.iloc[-1]
 
         # ═══ BULLISH FVG ═══
-        # Gap: high[2] < low[0] (candle -2 high is below current low)
-        # This means there's a gap up that wasn't filled
-        filt_up = (low_0 - high_2) / low_0 * 100 if low_0 > 0 else 0
+        # Er is een gap omhoog als high[2] < low[0]
+        # De FVG zone is van high[2] (onderkant) tot low[0] (bovenkant)
+        if high_2 < low_0:
+            gap_size = low_0 - high_2
+            gap_pct = (gap_size / high_2) * 100 if high_2 > 0 else 0
 
-        is_bull_gap = (high_2 < low_0 and
-                       high_2 < high_1 and
-                       low_2 < low_0 and
-                       filt_up > filter_pct)
-
-        if is_bull_gap:
-            # Order Block is at high[2] down to high[2] - ATR
-            # This is the SUPPORT zone below the gap
-            blocks.append(OrderBlock(
-                start_idx=i-1,
-                top=high_2,                    # Top of order block = high[2]
-                bottom=high_2 - current_atr,   # Bottom = high[2] - ATR
-                is_bull=True,
-                gap_pct=filt_up,
-                broken=False
-            ))
+            if gap_pct > filter_pct:
+                blocks.append(OrderBlock(
+                    start_idx=i,
+                    top=low_0,      # Bovenkant van de gap
+                    bottom=high_2,  # Onderkant van de gap
+                    is_bull=True,
+                    gap_pct=gap_pct,
+                    broken=False
+                ))
+                print(f"[FVG] Bullish gap at {i}: {high_2:.6f} - {low_0:.6f} ({gap_pct:.2f}%)")
 
         # ═══ BEARISH FVG ═══
-        # Gap: low[2] > high[0] (candle -2 low is above current high)
-        # This means there's a gap down that wasn't filled
-        filt_dn = (low_2 - high_0) / low_2 * 100 if low_2 > 0 else 0
+        # Er is een gap omlaag als low[2] > high[0]
+        # De FVG zone is van high[0] (onderkant) tot low[2] (bovenkant)
+        if low_2 > high_0:
+            gap_size = low_2 - high_0
+            gap_pct = (gap_size / low_2) * 100 if low_2 > 0 else 0
 
-        is_bear_gap = (low_2 > high_0 and
-                       low_2 > low_1 and
-                       high_2 > high_0 and
-                       filt_dn > filter_pct)
+            if gap_pct > filter_pct:
+                blocks.append(OrderBlock(
+                    start_idx=i,
+                    top=low_2,      # Bovenkant van de gap
+                    bottom=high_0,  # Onderkant van de gap
+                    is_bull=False,
+                    gap_pct=gap_pct,
+                    broken=False
+                ))
+                print(f"[FVG] Bearish gap at {i}: {high_0:.6f} - {low_2:.6f} ({gap_pct:.2f}%)")
 
-        if is_bear_gap:
-            # Order Block is at low[2] up to low[2] + ATR
-            # This is the RESISTANCE zone above the gap
-            blocks.append(OrderBlock(
-                start_idx=i-1,
-                top=low_2 + current_atr,       # Top = low[2] + ATR
-                bottom=low_2,                   # Bottom of order block = low[2]
-                is_bull=False,
-                gap_pct=filt_dn,
-                broken=False
-            ))
-
-    # Check for broken blocks
+    # Check for broken/filled gaps
     for block in blocks:
-        for i in range(block.start_idx + 2, len(df)):
+        for i in range(block.start_idx + 1, len(df)):
             if block.is_bull:
-                # Bullish block broken when price closes below bottom
-                if df.loc[i, 'close'] < block.bottom:
+                # Bullish FVG filled when price trades through the gap (low enters zone)
+                if df.loc[i, 'low'] <= block.top:
                     block.broken = True
                     block.break_idx = i
                     break
             else:
-                # Bearish block broken when price closes above top
-                if df.loc[i, 'close'] > block.top:
+                # Bearish FVG filled when price trades through the gap (high enters zone)
+                if df.loc[i, 'high'] >= block.bottom:
                     block.broken = True
                     block.break_idx = i
                     break
 
-    # Filter
+    # Filter broken blocks
     if not SHOW_BROKEN:
         blocks = [b for b in blocks if not b.broken]
 
+    # Keep only most recent blocks
     bull_blocks = [b for b in blocks if b.is_bull][-BOX_AMOUNT:]
     bear_blocks = [b for b in blocks if not b.is_bull][-BOX_AMOUNT:]
 
