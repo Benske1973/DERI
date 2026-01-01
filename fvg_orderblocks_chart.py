@@ -241,43 +241,32 @@ def create_chart(symbol: str, timeframe: str, filter_pct: float = 0.5, use_heiki
     else:
         o_col, h_col, l_col, c_col = 'open', 'high', 'low', 'close'
 
-    # Create figure
-    fig = make_subplots(rows=2, cols=1, shared_xaxes=True,
-                        vertical_spacing=0.03,
-                        row_heights=[0.8, 0.2])
-
-    # Candlestick colors
-    colors = ['#14be94' if df.loc[i, c_col] >= df.loc[i, o_col] else '#c21919'
-              for i in df.index]
-
-    # Convert datetime to string for better compatibility
-    x_data = df['datetime'].dt.strftime('%Y-%m-%d %H:%M:%S').tolist()
+    # Create simple figure (no subplots)
+    fig = go.Figure()
 
     # Add candlesticks
     fig.add_trace(
         go.Candlestick(
-            x=x_data,
-            open=df[o_col].tolist(),
-            high=df[h_col].tolist(),
-            low=df[l_col].tolist(),
-            close=df[c_col].tolist(),
+            x=df.index,
+            open=df[o_col],
+            high=df[h_col],
+            low=df[l_col],
+            close=df[c_col],
             name='Price',
             increasing_line_color='#26a69a',
             increasing_fillcolor='#26a69a',
             decreasing_line_color='#ef5350',
             decreasing_fillcolor='#ef5350',
-            line=dict(width=1),
-        ),
-        row=1, col=1
+        )
     )
 
     # Add Order Blocks as rectangles
+    shapes = []
+    annotations = []
+
     for block in blocks:
         if block.start_idx >= len(df):
             continue
-
-        x0 = df.loc[block.start_idx, 'datetime'].strftime('%Y-%m-%d %H:%M:%S')
-        x1 = df.loc[len(df)-1, 'datetime'].strftime('%Y-%m-%d %H:%M:%S')
 
         color = COL_BULL if block.is_bull else COL_BEAR
         border = COL_BULL_BORDER if block.is_bull else COL_BEAR_BORDER
@@ -286,70 +275,71 @@ def create_chart(symbol: str, timeframe: str, filter_pct: float = 0.5, use_heiki
             color = "rgba(128, 128, 128, 0.3)"
             border = "#808080"
 
-        fig.add_shape(
+        shapes.append(dict(
             type="rect",
-            x0=x0, x1=x1,
-            y0=block.bottom, y1=block.top,
+            x0=block.start_idx,
+            x1=len(df) - 1,
+            y0=block.bottom,
+            y1=block.top,
             fillcolor=color,
             line=dict(color=border, width=1),
-            layer="below",  # Draw behind candles
-            row=1, col=1
-        )
+            layer="below",
+        ))
 
-        label_text = f"{block.gap_pct:.2f}%"
-        fig.add_annotation(
-            x=x1,
+        annotations.append(dict(
+            x=len(df) - 1,
             y=(block.top + block.bottom) / 2,
-            text=label_text,
+            text=f"{block.gap_pct:.2f}%",
             showarrow=False,
-            font=dict(size=10, color='white'),
+            font=dict(size=9, color='white'),
             bgcolor=border,
-            row=1, col=1
-        )
-
-    # Add volume bars
-    fig.add_trace(
-        go.Bar(
-            x=x_data,
-            y=df['volume'].tolist(),
-            name='Volume',
-            marker_color=colors,
-            opacity=0.5
-        ),
-        row=2, col=1
-    )
+            xanchor='right',
+        ))
 
     # Update layout
     candle_type = "Heikin Ashi" if use_heikin_ashi else "Regular"
+
+    # Create tick labels (show every 20th candle)
+    tickvals = list(range(0, len(df), 20))
+    ticktext = [df.loc[i, 'datetime'].strftime('%H:%M') for i in tickvals if i < len(df)]
+
     fig.update_layout(
-        title=dict(
-            text=f'{symbol} - {timeframe} - {candle_type} - FVG Order Blocks ({len(blocks)} zones)',
-            font=dict(color='#d1d4dc')
-        ),
+        title=f'{symbol} - {timeframe} - {candle_type} - FVG Order Blocks ({len(blocks)} zones)',
         template='plotly_dark',
         paper_bgcolor='#131722',
         plot_bgcolor='#131722',
-        height=650,
+        height=600,
         showlegend=False,
-        margin=dict(l=60, r=60, t=50, b=50),
-        xaxis=dict(rangeslider=dict(visible=False)),
-        xaxis2=dict(rangeslider=dict(visible=False)),
+        margin=dict(l=10, r=80, t=50, b=50),
+        shapes=shapes,
+        annotations=annotations,
+        xaxis=dict(
+            rangeslider=dict(visible=False),
+            gridcolor='#1e222d',
+            showgrid=True,
+            tickvals=tickvals,
+            ticktext=ticktext,
+        ),
+        yaxis=dict(
+            gridcolor='#1e222d',
+            showgrid=True,
+            side='right',
+        ),
     )
-
-    fig.update_xaxes(gridcolor='#1e222d', showgrid=True, showline=True, linecolor='#363a45')
-    fig.update_yaxes(gridcolor='#1e222d', showgrid=True, showline=True, linecolor='#363a45', side='right')
 
     # Generate unique div ID
     div_id = f"chart_{uuid.uuid4().hex[:8]}"
 
-    # Return JSON data for Plotly.react()
+    # Return JSON data for Plotly.newPlot()
     chart_json = fig.to_json()
 
     return f'''
-    <div id="{div_id}" style="width:100%;height:650px;"></div>
+    <div id="{div_id}" style="width:100%;height:600px;"></div>
     <script>
-        var chartData = {chart_json};
-        Plotly.react("{div_id}", chartData.data, chartData.layout);
+        (function() {{
+            var chartData = {chart_json};
+            Plotly.newPlot("{div_id}", chartData.data, chartData.layout, {{responsive: true}});
+        }})();
     </script>
     '''
 
