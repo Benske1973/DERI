@@ -538,10 +538,10 @@ class Indicators:
             confluence_count += 1
             details["trend"] = "Aligned with bearish trend"
         elif trend == TrendDirection.NEUTRAL:
-            scores["trend"] = 10
+            scores["trend"] = 15  # More generous for neutral
             details["trend"] = "Neutral trend"
         else:
-            scores["trend"] = 0
+            scores["trend"] = 5  # Small penalty instead of 0
             details["trend"] = "Against trend"
 
         # === Momentum Score (25 points max) ===
@@ -550,17 +550,17 @@ class Indicators:
         macd_val = histogram.iloc[-1]
 
         if direction == "LONG":
-            if 30 <= rsi_value <= 50:  # RSI coming out of oversold
+            if 20 <= rsi_value <= 60:  # Wider RSI range
                 scores["momentum"] += 10
                 confluence_count += 1
-            if macd_val > 0 and macd_val > histogram.iloc[-2]:  # MACD bullish
+            if macd_val > 0 or macd_val > histogram.iloc[-2]:  # OR instead of AND
                 scores["momentum"] += 15
                 confluence_count += 1
         else:  # SHORT
-            if 50 <= rsi_value <= 70:  # RSI coming out of overbought
+            if 40 <= rsi_value <= 80:  # Wider RSI range
                 scores["momentum"] += 10
                 confluence_count += 1
-            if macd_val < 0 and macd_val < histogram.iloc[-2]:  # MACD bearish
+            if macd_val < 0 or macd_val < histogram.iloc[-2]:  # OR instead of AND
                 scores["momentum"] += 15
                 confluence_count += 1
 
@@ -573,24 +573,27 @@ class Indicators:
             details["volume"] = "Volume spike detected"
         else:
             vol_ratio = self.df["volume"].iloc[-1] / self.volume_sma().iloc[-1]
-            scores["volume"] = min(25, int(vol_ratio * 12.5))
+            # More generous volume scoring - base 10 + ratio bonus
+            scores["volume"] = min(25, 10 + int(vol_ratio * 10))
             details["volume"] = f"Volume ratio: {vol_ratio:.2f}x"
 
         # === Structure Score (25 points max) ===
         structure = self.analyze_market_structure()
+        # Give base points for having analyzed structure
+        scores["structure"] = 10  # Base points
 
         if direction == "LONG":
             if structure.bos_detected:
-                scores["structure"] += 15
+                scores["structure"] += 10
                 confluence_count += 1
             if structure.choch_detected:
-                scores["structure"] += 10
+                scores["structure"] += 5
         else:  # SHORT
             if structure.bos_detected:
-                scores["structure"] += 15
+                scores["structure"] += 10
                 confluence_count += 1
             if structure.choch_detected:
-                scores["structure"] += 10
+                scores["structure"] += 5
 
         details["structure"] = f"BOS: {structure.bos_detected}, CHoCH: {structure.choch_detected}"
 

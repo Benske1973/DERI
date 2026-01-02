@@ -179,8 +179,8 @@ class TradingStrategy:
             if score.momentum_score < 10:
                 return False, "Momentum not confirmed", score
 
-        # Need at least 2 confluences
-        if score.confluence_count < 2:
+        # Need at least 1 confluence for paper trading (was 2)
+        if score.confluence_count < 1:
             return False, f"Insufficient confluences: {score.confluence_count}", score
 
         return True, f"Score: {score.total_score:.1f} ({', '.join(checks)})", score

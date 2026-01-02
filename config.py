@@ -155,26 +155,27 @@ class StrategyConfig:
     """Trading strategy settings."""
     # SMC Strategy
     require_trend_alignment: bool = True
-    require_fvg: bool = True
-    require_ob: bool = True
-    require_choch: bool = True        # Change of Character confirmation
+    require_fvg: bool = False         # FVG OR OB is fine
+    require_ob: bool = False          # FVG OR OB is fine
+    require_choch: bool = False       # Don't require CHoCH for paper trading
     require_bos: bool = False         # Break of Structure
 
     # Entry filters
-    min_score: float = 70.0           # Minimum signal score (0-100)
-    require_volume_confirmation: bool = True
-    require_momentum_confirmation: bool = True
+    min_score: float = 40.0           # Lowered for more trades (paper trading)
+    require_volume_confirmation: bool = False  # Disabled for paper trading
+    require_momentum_confirmation: bool = False  # Disabled for paper trading
 
     # Session filters
-    use_session_filter: bool = True
+    use_session_filter: bool = False  # Disabled - trade 24/7 for paper trading
     allowed_sessions: List[str] = field(default_factory=lambda: [
+        "ASIAN",     # 00:00-08:00 UTC
         "LONDON",    # 08:00-17:00 UTC
         "NEW_YORK",  # 13:00-22:00 UTC
         "OVERLAP"    # 13:00-17:00 UTC (London/NY overlap)
     ])
 
     # Day filters
-    trade_weekends: bool = False
+    trade_weekends: bool = True       # Paper trade on weekends too
 
 @dataclass
 class WebSocketConfig:
