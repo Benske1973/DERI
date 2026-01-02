@@ -147,6 +147,9 @@ class PaperTrader:
         # Check pending orders
         self._check_orders(symbol, price)
 
+        # Update equity
+        self._update_equity()
+
     def update_prices(self, prices: Dict[str, float]):
         """Batch update prices."""
         for symbol, price in prices.items():
@@ -156,7 +159,12 @@ class PaperTrader:
 
     def _update_equity(self):
         """Update portfolio equity."""
-        self.portfolio.equity = self.portfolio.balance + self.portfolio.total_unrealized_pnl
+        # Equity = available balance + margin used (position values) + unrealized P&L
+        self.portfolio.equity = (
+            self.portfolio.balance +
+            self.portfolio.margin_used +
+            self.portfolio.total_unrealized_pnl
+        )
 
     def _update_position(self, symbol: str, price: float):
         """Update position with new price."""
@@ -298,8 +306,11 @@ class PaperTrader:
     def can_open_position(self, symbol: str) -> bool:
         """Check if we can open a new position."""
         # Check max positions
-        if len(self.portfolio.positions) >= self.cfg.max_open_positions:
-            logger.warning("Max open positions reached")
+        current_positions = len(self.portfolio.positions)
+        logger.info(f"Position check: {current_positions}/{self.cfg.max_open_positions} positions open: {list(self.portfolio.positions.keys())}")
+
+        if current_positions >= self.cfg.max_open_positions:
+            logger.warning(f"Max open positions reached: {current_positions}/{self.cfg.max_open_positions}")
             return False
 
         # Check if already has position in this symbol
@@ -309,7 +320,7 @@ class PaperTrader:
 
         # Check available balance
         if self.portfolio.balance < self.portfolio.equity * 0.1:  # Need at least 10%
-            logger.warning("Insufficient balance")
+            logger.warning(f"Insufficient balance: {self.portfolio.balance:.2f} < {self.portfolio.equity * 0.1:.2f}")
             return False
 
         return True

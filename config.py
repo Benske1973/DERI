@@ -126,7 +126,7 @@ class RiskConfig:
     # Position sizing
     risk_per_trade: float = 0.01      # 1% risk per trade
     max_position_size: float = 0.10   # Max 10% of capital per position
-    max_open_positions: int = 5       # Maximum concurrent positions
+    max_open_positions: int = 10      # Maximum concurrent positions
 
     # Risk/Reward
     min_risk_reward: float = 1.0      # Lowered for paper trading (was 2.0)
@@ -135,7 +135,7 @@ class RiskConfig:
     # Stop Loss
     use_atr_stops: bool = True
     atr_sl_multiplier: float = 1.5
-    max_sl_percent: float = 0.05      # Maximum 5% SL
+    max_sl_percent: float = 0.02      # Maximum 2% SL (tighter risk control)
 
     # Take Profit
     use_partial_tp: bool = True

@@ -190,42 +190,30 @@ class TradingStrategy:
                              atr: float) -> Tuple[float, float, float]:
         """
         Calculate entry, stop loss, and take profit levels.
+        Uses current price and ATR-based stops for tighter risk control.
 
         Returns:
             Tuple of (entry_price, stop_loss, take_profit)
         """
+        # Use current price as entry (market order simulation)
+        entry = current_price
+
+        # Calculate SL based on ATR, not POI zone (tighter stops)
+        sl_distance = atr * self.risk_cfg.atr_sl_multiplier
+
+        # Cap SL distance to max_sl_percent
+        max_sl_distance = entry * self.risk_cfg.max_sl_percent
+        sl_distance = min(sl_distance, max_sl_distance)
+
         if poi.direction == "BULLISH":
-            # Entry at POI top (when tapped and confirmed)
-            entry = poi.top
-
-            # Stop loss below POI with ATR buffer
-            if self.risk_cfg.use_atr_stops:
-                sl = poi.bottom - (atr * self.risk_cfg.atr_sl_multiplier)
-            else:
-                sl = poi.bottom
-
-            # Ensure SL is not too far
-            max_sl_distance = entry * self.risk_cfg.max_sl_percent
-            if entry - sl > max_sl_distance:
-                sl = entry - max_sl_distance
-
+            sl = entry - sl_distance
             # Take profit based on R:R
-            risk = entry - sl
-            tp = entry + (risk * self.risk_cfg.default_risk_reward)
-
+            tp = entry + (sl_distance * self.risk_cfg.default_risk_reward)
         else:  # BEARISH
-            entry = poi.bottom
-            if self.risk_cfg.use_atr_stops:
-                sl = poi.top + (atr * self.risk_cfg.atr_sl_multiplier)
-            else:
-                sl = poi.top
+            sl = entry + sl_distance
+            tp = entry - (sl_distance * self.risk_cfg.default_risk_reward)
 
-            max_sl_distance = entry * self.risk_cfg.max_sl_percent
-            if sl - entry > max_sl_distance:
-                sl = entry + max_sl_distance
-
-            risk = sl - entry
-            tp = entry - (risk * self.risk_cfg.default_risk_reward)
+        logger.info(f"Entry/Exit calc: Entry={entry:.6f}, SL={sl:.6f}, TP={tp:.6f}, ATR={atr:.6f}, SL_dist={sl_distance:.6f}")
 
         return entry, sl, tp
 
