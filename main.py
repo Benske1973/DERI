@@ -28,7 +28,7 @@ logging.basicConfig(
 logger = logging.getLogger("main")
 
 # Import components
-from config import config
+from config import config, PositionStatus
 from database import db
 from kucoin_client import kucoin_client
 from scanner import scanner, MultiScanner
@@ -103,7 +103,7 @@ class PaperTraderOrchestrator:
             for poi in scanner.active_pois[symbol]:
                 if poi.status.value == "SCANNING":
                     if poi.bottom <= price <= poi.top:
-                        poi.status = config.PositionStatus.TAPPED
+                        poi.status = PositionStatus.TAPPED
                         db.update_signal_status(symbol, "TAPPED")
                         logger.info(f"POI TAPPED: {symbol} @ {price:.4f}")
 

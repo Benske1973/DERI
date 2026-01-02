@@ -6,7 +6,7 @@ Scans multiple timeframes and generates trading signals.
 
 import time
 import logging
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Tuple
 from dataclasses import dataclass, field
 from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor, as_completed
