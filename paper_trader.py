@@ -681,6 +681,49 @@ class PaperTrader:
             for trade in history
         ]
 
+    def close_all_short_positions(self) -> List[Position]:
+        """
+        Close all SHORT positions immediately.
+        Use when switching to LONG-only mode.
+
+        Returns:
+            List of closed positions
+        """
+        closed = []
+        short_symbols = [
+            symbol for symbol, pos in self.portfolio.positions.items()
+            if pos.side == "SHORT"
+        ]
+
+        for symbol in short_symbols:
+            price = self._price_cache.get(symbol)
+            if price:
+                position = self.close_position(symbol, price, "LONG_ONLY_MODE")
+                if position:
+                    closed.append(position)
+                    logger.info(f"Closed SHORT position {symbol} for LONG-only mode")
+
+        return closed
+
+    def close_all_positions(self, reason: str = "MANUAL") -> List[Position]:
+        """
+        Close all open positions.
+
+        Returns:
+            List of closed positions
+        """
+        closed = []
+        symbols = list(self.portfolio.positions.keys())
+
+        for symbol in symbols:
+            price = self._price_cache.get(symbol)
+            if price:
+                position = self.close_position(symbol, price, reason)
+                if position:
+                    closed.append(position)
+
+        return closed
+
 
 # Singleton instance
 paper_trader = PaperTrader()

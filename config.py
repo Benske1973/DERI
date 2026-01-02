@@ -166,6 +166,10 @@ class StrategyConfig:
     require_choch: bool = False       # Don't require CHoCH for paper trading
     require_bos: bool = False         # Break of Structure
 
+    # Direction filter - LONG only mode
+    long_only: bool = True            # Only take LONG trades (no SHORT)
+    allowed_directions: List[str] = field(default_factory=lambda: ["LONG"])
+
     # Entry filters
     min_score: float = 40.0           # Lowered for more trades (paper trading)
     require_volume_confirmation: bool = False  # Disabled for paper trading

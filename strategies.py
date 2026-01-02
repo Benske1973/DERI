@@ -191,6 +191,7 @@ class TradingStrategy:
         """
         Calculate entry, stop loss, and take profit levels.
         Uses current price and ATR-based stops for tighter risk control.
+        Accounts for trading costs (spread, slippage, fees) in SL calculation.
 
         Returns:
             Tuple of (entry_price, stop_loss, take_profit)
@@ -198,11 +199,26 @@ class TradingStrategy:
         # Use current price as entry (market order simulation)
         entry = current_price
 
+        # Calculate trading costs that will affect actual P&L:
+        # Entry: spread + slippage + fee = 0.05% + 0.1% + 0.1% = 0.25%
+        # Exit: spread + slippage + fee = 0.05% + 0.1% + 0.1% = 0.25%
+        # Total costs = 0.50% of position value
+        total_cost_percent = (
+            self.risk_cfg.spread_percent +
+            self.risk_cfg.slippage_percent +
+            self.risk_cfg.taker_fee
+        ) * 2  # Both entry and exit
+
+        # Effective max SL after accounting for costs
+        # If max_sl is 2% and costs are 0.5%, we can only have 1.5% price movement
+        effective_max_sl = self.risk_cfg.max_sl_percent - total_cost_percent
+        effective_max_sl = max(effective_max_sl, 0.005)  # Minimum 0.5% to be viable
+
         # Calculate SL based on ATR, not POI zone (tighter stops)
         sl_distance = atr * self.risk_cfg.atr_sl_multiplier
 
-        # Cap SL distance to max_sl_percent
-        max_sl_distance = entry * self.risk_cfg.max_sl_percent
+        # Cap SL distance to effective max_sl_percent (accounting for costs)
+        max_sl_distance = entry * effective_max_sl
         sl_distance = min(sl_distance, max_sl_distance)
 
         if poi.direction == "BULLISH":
@@ -213,7 +229,11 @@ class TradingStrategy:
             sl = entry + sl_distance
             tp = entry - (sl_distance * self.risk_cfg.default_risk_reward)
 
-        logger.info(f"Entry/Exit calc: Entry={entry:.6f}, SL={sl:.6f}, TP={tp:.6f}, ATR={atr:.6f}, SL_dist={sl_distance:.6f}")
+        logger.info(
+            f"Entry/Exit calc: Entry={entry:.6f}, SL={sl:.6f}, TP={tp:.6f} | "
+            f"ATR={atr:.6f}, SL_dist={sl_distance:.6f} ({sl_distance/entry*100:.2f}%) | "
+            f"Costs={total_cost_percent*100:.2f}%, Effective max SL={effective_max_sl*100:.2f}%"
+        )
 
         return entry, sl, tp
 
@@ -234,6 +254,23 @@ class TradingStrategy:
         """
         checks_passed = []
         checks_failed = []
+
+        # 0. Check direction filter (LONG-only mode)
+        direction = "LONG" if poi.direction == "BULLISH" else "SHORT"
+        if self.cfg.long_only and direction == "SHORT":
+            return StrategyResult(
+                False,
+                reason="SHORT signals disabled (LONG-only mode)",
+                checks_failed=["LONG-only mode active, skipping SHORT"]
+            )
+
+        if direction not in self.cfg.allowed_directions:
+            return StrategyResult(
+                False,
+                reason=f"{direction} not in allowed directions",
+                checks_failed=[f"{direction} direction not allowed"]
+            )
+        checks_passed.append(f"{direction} direction allowed")
 
         # 1. Check trading day
         day_ok, day_msg = self.is_trading_day()
@@ -266,8 +303,7 @@ class TradingStrategy:
                                   checks_passed=checks_passed, checks_failed=checks_failed)
         checks_passed.append(poi_msg)
 
-        # 5. Check LTF confirmation
-        direction = "LONG" if poi.direction == "BULLISH" else "SHORT"
+        # 5. Check LTF confirmation (direction already set above)
         conf_ok, conf_msg, score = self.evaluate_confirmation(indicators, direction)
         if not conf_ok:
             checks_failed.append(conf_msg)

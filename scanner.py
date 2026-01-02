@@ -123,6 +123,9 @@ class MultiScanner:
             # Build POIs list
             pois = []
 
+            # Check if we're in LONG-only mode
+            long_only = config.strategy.long_only
+
             # Add valid FVGs as POIs
             for fvg in fvgs[-5:]:  # Last 5 FVGs
                 # Check if FVG is still valid (not filled)
@@ -138,6 +141,9 @@ class MultiScanner:
                             timeframe=self.cfg.htf_timeframe.value
                         ))
                 elif fvg.type == "BEARISH" and current_price < fvg.top:
+                    # Skip BEARISH in LONG-only mode
+                    if long_only:
+                        continue
                     if current_price > fvg.bottom * 0.9:  # Within 10% below
                         pois.append(POI(
                             symbol=symbol,
@@ -162,6 +168,9 @@ class MultiScanner:
                         timeframe=self.cfg.htf_timeframe.value
                     ))
                 elif ob.type == "BEARISH" and current_price < ob.high:
+                    # Skip BEARISH in LONG-only mode
+                    if long_only:
+                        continue
                     pois.append(POI(
                         symbol=symbol,
                         poi_type="OB",

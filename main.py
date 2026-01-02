@@ -429,6 +429,16 @@ Examples:
         action="store_true",
         help="Show statistics and exit"
     )
+    parser.add_argument(
+        "--close-shorts",
+        action="store_true",
+        help="Close all SHORT positions and exit"
+    )
+    parser.add_argument(
+        "--close-all",
+        action="store_true",
+        help="Close all positions and exit"
+    )
 
     args = parser.parse_args()
 
@@ -436,6 +446,50 @@ Examples:
         from dashboard import stats_viewer
         stats_viewer.show_portfolio_details()
         stats_viewer.show_database_stats()
+        return
+
+    if args.close_shorts:
+        logger.info("Closing all SHORT positions...")
+        # Need to initialize and load current prices
+        db.init_database()
+        scanner.initialize()
+
+        # Get current prices for positions
+        for symbol in list(paper_trader.portfolio.positions.keys()):
+            try:
+                ticker = kucoin_client.get_ticker(symbol)
+                paper_trader.update_price(symbol, ticker.price)
+            except Exception as e:
+                logger.error(f"Could not get price for {symbol}: {e}")
+
+        closed = paper_trader.close_all_short_positions()
+        if closed:
+            logger.info(f"Closed {len(closed)} SHORT positions")
+            for pos in closed:
+                print(f"  Closed {pos.symbol}: P&L ${pos.pnl:.2f} ({pos.pnl_percent:.2f}%)")
+        else:
+            logger.info("No SHORT positions to close")
+        return
+
+    if args.close_all:
+        logger.info("Closing all positions...")
+        db.init_database()
+        scanner.initialize()
+
+        for symbol in list(paper_trader.portfolio.positions.keys()):
+            try:
+                ticker = kucoin_client.get_ticker(symbol)
+                paper_trader.update_price(symbol, ticker.price)
+            except Exception as e:
+                logger.error(f"Could not get price for {symbol}: {e}")
+
+        closed = paper_trader.close_all_positions("MANUAL_CLOSE_ALL")
+        if closed:
+            logger.info(f"Closed {len(closed)} positions")
+            for pos in closed:
+                print(f"  Closed {pos.symbol}: P&L ${pos.pnl:.2f} ({pos.pnl_percent:.2f}%)")
+        else:
+            logger.info("No positions to close")
         return
 
     if args.scan_only:
