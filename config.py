@@ -123,6 +123,12 @@ class RiskConfig:
     # Capital
     initial_capital: float = 10000.0  # Paper trading capital
 
+    # Trading Costs (realistic simulation)
+    taker_fee: float = 0.001          # 0.1% taker fee (market orders)
+    maker_fee: float = 0.001          # 0.1% maker fee (limit orders)
+    spread_percent: float = 0.0005    # 0.05% spread simulation
+    slippage_percent: float = 0.001   # 0.1% slippage simulation
+
     # Position sizing
     risk_per_trade: float = 0.01      # 1% risk per trade
     max_position_size: float = 0.10   # Max 10% of capital per position

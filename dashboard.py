@@ -84,6 +84,8 @@ class Dashboard:
         pnl_color = self.get_color(total_pnl)
         unrealized_color = self.get_color(unrealized)
 
+        fees_paid = summary.get('total_fees_paid', 0)
+
         lines = [
             "PORTFOLIO SUMMARY",
             "-" * 40,
@@ -92,6 +94,7 @@ class Dashboard:
             f"Equity:            {self.format_currency(equity)}",
             f"Total P&L:         {pnl_color}{self.format_currency(total_pnl)} ({self.format_percent(summary['total_pnl_percent'])}){self.reset_color()}",
             f"Unrealized P&L:    {unrealized_color}{self.format_currency(unrealized)}{self.reset_color()}",
+            f"Fees Paid:         {self.format_currency(fees_paid)}",
             "",
             f"Open Positions:    {summary['open_positions']}",
             f"Total Trades:      {summary['total_trades']}",

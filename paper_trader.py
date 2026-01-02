@@ -111,8 +111,13 @@ class Portfolio:
 
     @property
     def total_pnl(self) -> float:
-        """Total realized P&L."""
-        return self.balance - self.initial_capital
+        """Total realized P&L (from closed trades only)."""
+        return sum(trade.pnl for trade in self.trade_history)
+
+    @property
+    def total_pnl_including_unrealized(self) -> float:
+        """Total P&L including unrealized."""
+        return self.total_pnl + self.total_unrealized_pnl
 
     @property
     def open_positions_count(self) -> int:
@@ -135,6 +140,46 @@ class PaperTrader:
         )
         self.cfg = config.risk
         self._price_cache: Dict[str, float] = {}
+        self._total_fees_paid: float = 0.0
+
+    def calculate_entry_price_with_costs(self, price: float, side: str) -> float:
+        """
+        Calculate effective entry price including spread and slippage.
+
+        For LONG: price goes UP (worse entry)
+        For SHORT: price goes DOWN (worse entry)
+        """
+        spread_cost = price * self.cfg.spread_percent
+        slippage_cost = price * self.cfg.slippage_percent
+
+        if side == "LONG":
+            # Buying: pay higher price
+            return price + spread_cost + slippage_cost
+        else:
+            # Selling/Shorting: get lower price
+            return price - spread_cost - slippage_cost
+
+    def calculate_exit_price_with_costs(self, price: float, side: str) -> float:
+        """
+        Calculate effective exit price including spread and slippage.
+
+        For closing LONG: price goes DOWN (worse exit)
+        For closing SHORT: price goes UP (worse exit)
+        """
+        spread_cost = price * self.cfg.spread_percent
+        slippage_cost = price * self.cfg.slippage_percent
+
+        if side == "LONG":
+            # Selling to close long: get lower price
+            return price - spread_cost - slippage_cost
+        else:
+            # Buying to close short: pay higher price
+            return price + spread_cost + slippage_cost
+
+    def calculate_fee(self, value: float, is_maker: bool = False) -> float:
+        """Calculate trading fee."""
+        fee_rate = self.cfg.maker_fee if is_maker else self.cfg.taker_fee
+        return value * fee_rate
 
     def update_price(self, symbol: str, price: float):
         """Update price for a symbol and check orders/positions."""
@@ -371,31 +416,40 @@ class PaperTrader:
             logger.warning(f"R:R ratio too low for {symbol}: {rr_ratio:.2f} < {self.cfg.min_risk_reward}")
             return None
 
+        # Apply spread and slippage to entry price
+        effective_entry = self.calculate_entry_price_with_costs(entry_price, side)
+
+        # Calculate entry fee
+        position_value = quantity * effective_entry
+        entry_fee = self.calculate_fee(position_value)
+
         # Create position
         position = Position(
             id=str(uuid.uuid4())[:8],
             symbol=symbol,
             side=side,
-            entry_price=entry_price,
+            entry_price=effective_entry,  # Use effective entry with costs
             quantity=quantity,
-            current_price=entry_price,
+            current_price=effective_entry,
             stop_loss=stop_loss,
             take_profit=take_profit,
-            highest_price=entry_price,
-            lowest_price=entry_price
+            highest_price=effective_entry,
+            lowest_price=effective_entry
         )
 
-        # Deduct from balance
-        position_value = quantity * entry_price
-        self.portfolio.balance -= position_value
+        # Deduct from balance (position value + entry fee)
+        total_cost = position_value + entry_fee
+        self.portfolio.balance -= total_cost
         self.portfolio.margin_used += position_value
+        self._total_fees_paid += entry_fee
 
         # Store position
         self.portfolio.positions[symbol] = position
 
         logger.info(
-            f"POSITION OPENED: {side} {quantity:.4f} {symbol} @ {entry_price:.4f} | "
-            f"SL: {stop_loss:.4f} | TP: {take_profit:.4f} | R:R: {rr_ratio:.2f}"
+            f"POSITION OPENED: {side} {quantity:.4f} {symbol} @ {effective_entry:.6f} "
+            f"(raw: {entry_price:.6f}) | SL: {stop_loss:.6f} | TP: {take_profit:.6f} | "
+            f"R:R: {rr_ratio:.2f} | Fee: ${entry_fee:.2f}"
         )
 
         return position
@@ -421,18 +475,30 @@ class PaperTrader:
         if close_price is None:
             close_price = self._price_cache.get(symbol, position.current_price)
 
-        # Calculate P&L
-        if position.side == "LONG":
-            pnl = (close_price - position.entry_price) * position.quantity
-        else:
-            pnl = (position.entry_price - close_price) * position.quantity
+        # Apply spread and slippage to exit price
+        effective_exit = self.calculate_exit_price_with_costs(close_price, position.side)
 
+        # Calculate exit fee
+        exit_value = position.quantity * effective_exit
+        exit_fee = self.calculate_fee(exit_value)
+
+        # Calculate P&L (using effective exit price, minus exit fee)
+        if position.side == "LONG":
+            gross_pnl = (effective_exit - position.entry_price) * position.quantity
+        else:
+            gross_pnl = (position.entry_price - effective_exit) * position.quantity
+
+        # Net P&L after exit fee
+        pnl = gross_pnl - exit_fee
         pnl_percent = (pnl / (position.entry_price * position.quantity)) * 100
+
+        # Track fees
+        self._total_fees_paid += exit_fee
 
         # Update position
         position.status = "CLOSED"
         position.closed_at = datetime.now()
-        position.close_price = close_price
+        position.close_price = effective_exit
         position.close_reason = reason
         position.pnl = pnl
         position.pnl_percent = pnl_percent
@@ -446,11 +512,11 @@ class PaperTrader:
         self.portfolio.trade_history.append(position)
         del self.portfolio.positions[symbol]
 
-        result_emoji = "" if pnl >= 0 else ""
+        result_emoji = "+" if pnl >= 0 else "-"
         logger.info(
             f"{result_emoji} POSITION CLOSED: {position.side} {symbol} | "
-            f"Entry: {position.entry_price:.4f} | Exit: {close_price:.4f} | "
-            f"P&L: ${pnl:.2f} ({pnl_percent:.2f}%) | Reason: {reason}"
+            f"Entry: {position.entry_price:.6f} | Exit: {effective_exit:.6f} (raw: {close_price:.6f}) | "
+            f"P&L: ${pnl:.2f} ({pnl_percent:.2f}%) | Fee: ${exit_fee:.2f} | Reason: {reason}"
         )
 
         return position
@@ -555,7 +621,7 @@ class PaperTrader:
             "balance": self.portfolio.balance,
             "equity": self.portfolio.equity,
             "total_pnl": self.portfolio.total_pnl,
-            "total_pnl_percent": (self.portfolio.total_pnl / self.portfolio.initial_capital) * 100,
+            "total_pnl_percent": (self.portfolio.total_pnl / self.portfolio.initial_capital) * 100 if self.portfolio.initial_capital > 0 else 0,
             "unrealized_pnl": self.portfolio.total_unrealized_pnl,
             "open_positions": len(self.portfolio.positions),
             "total_trades": total_trades,
@@ -566,7 +632,8 @@ class PaperTrader:
             "avg_win": avg_win,
             "avg_loss": avg_loss,
             "largest_win": max([t.pnl for t in self.portfolio.trade_history], default=0),
-            "largest_loss": min([t.pnl for t in self.portfolio.trade_history], default=0)
+            "largest_loss": min([t.pnl for t in self.portfolio.trade_history], default=0),
+            "total_fees_paid": self._total_fees_paid
         }
 
     def get_open_positions(self) -> List[Dict]:
