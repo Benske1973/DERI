@@ -129,8 +129,8 @@ class RiskConfig:
     max_open_positions: int = 5       # Maximum concurrent positions
 
     # Risk/Reward
-    min_risk_reward: float = 2.0      # Minimum R:R ratio
-    default_risk_reward: float = 3.0  # Default R:R if not specified
+    min_risk_reward: float = 1.0      # Lowered for paper trading (was 2.0)
+    default_risk_reward: float = 2.0  # Default R:R (was 3.0)
 
     # Stop Loss
     use_atr_stops: bool = True
@@ -154,7 +154,7 @@ class RiskConfig:
 class StrategyConfig:
     """Trading strategy settings."""
     # SMC Strategy
-    require_trend_alignment: bool = True
+    require_trend_alignment: bool = False  # Disabled for paper trading
     require_fvg: bool = False         # FVG OR OB is fine
     require_ob: bool = False          # FVG OR OB is fine
     require_choch: bool = False       # Don't require CHoCH for paper trading

@@ -354,8 +354,10 @@ class PaperTrader:
         reward = abs(take_profit - entry_price)
         rr_ratio = reward / risk if risk > 0 else 0
 
+        logger.info(f"Position sizing for {symbol}: Entry={entry_price:.4f}, SL={stop_loss:.4f}, TP={take_profit:.4f}, R:R={rr_ratio:.2f}, Qty={quantity:.4f}")
+
         if rr_ratio < self.cfg.min_risk_reward:
-            logger.warning(f"R:R ratio too low for {symbol}: {rr_ratio:.2f}")
+            logger.warning(f"R:R ratio too low for {symbol}: {rr_ratio:.2f} < {self.cfg.min_risk_reward}")
             return None
 
         # Create position

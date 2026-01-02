@@ -113,6 +113,8 @@ class PaperTraderOrchestrator:
     def _check_confirmation(self, symbol: str, poi, price: float):
         """Check for entry confirmation on LTF."""
         try:
+            logger.info(f"Checking confirmation for {symbol} @ {price:.4f}")
+
             # Get LTF data
             df = kucoin_client.get_candles(
                 symbol=symbol,
@@ -121,6 +123,7 @@ class PaperTraderOrchestrator:
             )
 
             if df.empty:
+                logger.warning(f"No LTF data for {symbol}")
                 return
 
             ind = Indicators(df)
@@ -128,7 +131,23 @@ class PaperTraderOrchestrator:
             # Get scan result
             scan_result = scanner.scan_results.get(symbol)
             if not scan_result:
-                return
+                logger.warning(f"No scan result for {symbol} - creating minimal result")
+                # Create a minimal scan result for the trade
+                from scanner import ScanResult
+                scan_result = ScanResult(
+                    symbol=symbol,
+                    timestamp=datetime.now(),
+                    current_price=price,
+                    trend=ind.get_trend(),
+                    htf_bias=poi.direction,
+                    ltf_confirmation=True,
+                    pois=[poi],
+                    fvgs=[],
+                    order_blocks=[],
+                    structure=ind.analyze_market_structure(),
+                    score=50,
+                    analysis={}
+                )
 
             # Generate signal
             result = self.strategy.generate_signal(
@@ -138,11 +157,20 @@ class PaperTraderOrchestrator:
                 current_price=price
             )
 
+            logger.info(f"Signal result for {symbol}: has_signal={result.has_signal}, reason={result.reason}")
+            logger.info(f"  Checks passed: {result.checks_passed}")
+            logger.info(f"  Checks failed: {result.checks_failed}")
+
             if result.has_signal and result.signal:
+                logger.info(f"EXECUTING SIGNAL for {symbol}")
                 self._execute_signal(result.signal)
+            else:
+                logger.info(f"No signal for {symbol}: {result.reason}")
 
         except Exception as e:
             logger.error(f"Error checking confirmation for {symbol}: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
 
     def _execute_signal(self, signal: Signal):
         """Execute a trading signal."""

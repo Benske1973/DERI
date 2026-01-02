@@ -124,8 +124,9 @@ class TradingStrategy:
         if not self.cfg.require_trend_alignment:
             return True, "Trend alignment not required"
 
+        # Allow NEUTRAL trends for paper trading - just note it
         if scan_result.trend == TrendDirection.NEUTRAL:
-            return False, "No clear HTF trend"
+            return True, "Neutral HTF trend (allowed for paper trading)"
 
         return True, f"HTF bias: {scan_result.htf_bias}"
 
