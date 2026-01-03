@@ -599,9 +599,9 @@ class VolumeMomentumStrategy:
     """
 
     def __init__(self):
-        self.min_volume_ratio = 0.5  # Lowered from 0.8
-        self.min_confidence = 50  # Lowered from 60
-        self.max_atr_percent = 8.0  # Increased from 5.0 for crypto volatility
+        self.min_volume_ratio = 0.3  # Very lenient
+        self.min_confidence = 40  # Lowered to get more trades
+        self.max_atr_percent = 10.0  # High volatility OK for crypto
 
     def analyze(self, df: pd.DataFrame, symbol: str) -> Optional[TradeSetup]:
         """
@@ -649,17 +649,23 @@ class VolumeMomentumStrategy:
                 f"Swept {sweep.sweep_price:.6f}, recovered to {sweep.recovery_price:.6f}"
             ))
 
-        # 3. Check momentum-based direction
-        if mom_state.ema_alignment == "BULLISH" and mom_state.rsi > 40 and mom_state.rsi < 70:
+        # 3. Check momentum-based direction (more lenient)
+        if mom_state.ema_alignment == "BULLISH":
             directions_to_check.append(("LONG", "MOMENTUM", "EMA alignment bullish"))
-        elif mom_state.ema_alignment == "BEARISH" and mom_state.rsi < 60 and mom_state.rsi > 30:
+        elif mom_state.ema_alignment == "BEARISH":
             directions_to_check.append(("SHORT", "MOMENTUM", "EMA alignment bearish"))
 
-        # 4. RSI oversold/overbought bounce
-        if mom_state.rsi < 35:
-            directions_to_check.append(("LONG", "RSI_OVERSOLD", f"RSI oversold at {mom_state.rsi:.0f}"))
-        elif mom_state.rsi > 65:
-            directions_to_check.append(("SHORT", "RSI_OVERBOUGHT", f"RSI overbought at {mom_state.rsi:.0f}"))
+        # Also check if price is trending (even with mixed EMAs)
+        if mom_state.price_momentum > 2:  # Price up more than 2% in last 10 candles
+            directions_to_check.append(("LONG", "PRICE_MOMENTUM", f"Price momentum +{mom_state.price_momentum:.1f}%"))
+        elif mom_state.price_momentum < -2:
+            directions_to_check.append(("SHORT", "PRICE_MOMENTUM", f"Price momentum {mom_state.price_momentum:.1f}%"))
+
+        # 4. RSI oversold/overbought bounce (more lenient)
+        if mom_state.rsi < 40:
+            directions_to_check.append(("LONG", "RSI_OVERSOLD", f"RSI low at {mom_state.rsi:.0f}"))
+        elif mom_state.rsi > 60:
+            directions_to_check.append(("SHORT", "RSI_OVERBOUGHT", f"RSI high at {mom_state.rsi:.0f}"))
 
         # 5. MACD crossover
         if mom_state.macd_crossover == "BULLISH":
@@ -677,12 +683,18 @@ class VolumeMomentumStrategy:
         best_setup = None
         best_confidence = 0
 
+        # Log if no directions to check
+        if not directions_to_check:
+            logger.debug(f"{symbol}: No direction signals found")
+            return None
+
         for direction, signal_type, initial_reason in directions_to_check:
             # Base confidence from signal type
             base_confidence = {
                 "SQUEEZE_BREAKOUT": 30,
                 "LIQUIDITY_SWEEP": 25,
                 "MOMENTUM": 20,
+                "PRICE_MOMENTUM": 20,
                 "RSI_OVERSOLD": 15,
                 "RSI_OVERBOUGHT": 15,
                 "MACD_CROSS": 20,
@@ -741,6 +753,9 @@ class VolumeMomentumStrategy:
                    (direction == "SHORT" and mom_state.rsi_divergence == "BEARISH"):
                     confidence += 15
                     reasons.append(f"{mom_state.rsi_divergence} divergence")
+
+            # Log confidence for debugging
+            logger.debug(f"{symbol} {direction}: confidence={confidence}, min={self.min_confidence}")
 
             if confidence > best_confidence and confidence >= self.min_confidence:
                 best_confidence = confidence
