@@ -5,6 +5,8 @@ Uses only public endpoints - no API keys required for paper trading.
 """
 
 import requests
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 import pandas as pd
 import time
 import logging
@@ -55,6 +57,15 @@ class KuCoinClient:
             "Content-Type": "application/json",
             "User-Agent": "KuCoin-Papertrader/1.0"
         })
+
+        # Configure connection pool for parallel requests
+        adapter = HTTPAdapter(
+            pool_connections=30,  # Number of connection pools
+            pool_maxsize=30,      # Max connections per pool
+            max_retries=Retry(total=3, backoff_factor=0.5)
+        )
+        self.session.mount("https://", adapter)
+        self.session.mount("http://", adapter)
 
         # Rate limiting
         self.last_request_time = 0
