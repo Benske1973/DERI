@@ -771,9 +771,8 @@ class VolumeMomentumStrategy:
                     confidence += 15
                     reasons.append(f"{mom_state.rsi_divergence} divergence")
 
-            # Log confidence for debugging - use INFO for first few
-            if confidence >= self.min_confidence:
-                logger.info(f"{symbol} {direction}: confidence={confidence} >= min={self.min_confidence} ✓")
+            # Log ALL confidence calculations for first symbol
+            logger.info(f"{symbol} {direction}: base={base_confidence}, vol={'+'if vol_confirmed else 'p'}{'+25' if vol_confirmed else '+10'}, mom={'+'if mom_confirmed else 'p'}{'+25' if mom_confirmed else '+5'}, regime={vol_state.regime.value} => total={confidence}")
 
             if confidence > best_confidence and confidence >= self.min_confidence:
                 best_confidence = confidence
