@@ -600,7 +600,7 @@ class VolumeMomentumStrategy:
 
     def __init__(self):
         self.min_volume_ratio = 0.3  # Very lenient
-        self.min_confidence = 40  # Lowered to get more trades
+        self.min_confidence = 35  # Lowered further to get trades
         self.max_atr_percent = 10.0  # High volatility OK for crypto
 
     def analyze(self, df: pd.DataFrame, symbol: str) -> Optional[TradeSetup]:

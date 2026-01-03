@@ -119,7 +119,7 @@ class VolumeMomentumTrader:
                 continue
 
             # Check minimum confidence
-            if setup.confidence < 40:
+            if setup.confidence < 35:
                 continue
 
             # Get current price for verification
