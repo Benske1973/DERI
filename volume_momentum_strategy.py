@@ -695,9 +695,11 @@ class VolumeMomentumStrategy:
         best_setup = None
         best_confidence = 0
 
-        # Log if no directions to check
-        if not directions_to_check:
-            logger.debug(f"{symbol}: No direction signals found")
+        # Log directions found
+        if directions_to_check:
+            logger.debug(f"{symbol}: Found {len(directions_to_check)} direction signals")
+        else:
+            logger.debug(f"{symbol}: No direction signals - regime={vol_state.regime}, ema={mom_state.ema_alignment}, rsi={mom_state.rsi:.0f}")
             return None
 
         for direction, signal_type, initial_reason in directions_to_check:
@@ -769,8 +771,9 @@ class VolumeMomentumStrategy:
                     confidence += 15
                     reasons.append(f"{mom_state.rsi_divergence} divergence")
 
-            # Log confidence for debugging
-            logger.debug(f"{symbol} {direction}: confidence={confidence}, min={self.min_confidence}")
+            # Log confidence for debugging - use INFO for first few
+            if confidence >= self.min_confidence:
+                logger.info(f"{symbol} {direction}: confidence={confidence} >= min={self.min_confidence} ✓")
 
             if confidence > best_confidence and confidence >= self.min_confidence:
                 best_confidence = confidence

@@ -96,21 +96,9 @@ class VolumeMomentumScanner:
 
             current_price = df['close'].iloc[-1]
 
-            # Quick volume check first (filter out low volume)
+            # Quick volume check first (very lenient)
             vol_analyzer = VolumeAnalyzer(df)
             vol_profile = vol_analyzer.analyze()
-
-            if vol_profile.volume_ratio < 0.5:
-                # Skip very low volume symbols
-                return SymbolAnalysis(
-                    symbol=symbol,
-                    timestamp=datetime.now(),
-                    current_price=current_price,
-                    volume_ratio=vol_profile.volume_ratio,
-                    regime=MarketRegime.RANGING,
-                    has_setup=False,
-                    reasons=["Low volume - skipped"]
-                )
 
             # Get volatility regime
             volatility_analyzer = VolatilityAnalyzer(df)
@@ -118,6 +106,10 @@ class VolumeMomentumScanner:
 
             # Run full strategy analysis
             setup = self.strategy.analyze(df, symbol)
+
+            # Log if we found a setup
+            if setup:
+                logger.info(f"Setup found for {symbol}: {setup.direction} conf={setup.confidence}%")
 
             analysis = SymbolAnalysis(
                 symbol=symbol,
