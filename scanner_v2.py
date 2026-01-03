@@ -148,8 +148,8 @@ class VolumeMomentumScanner:
 
         logger.info(f"Starting scan on {len(self.symbols)} symbols...")
 
-        # Parallel scanning
-        with ThreadPoolExecutor(max_workers=10) as executor:
+        # Parallel scanning (increased workers for 300 coins)
+        with ThreadPoolExecutor(max_workers=20) as executor:
             futures = {
                 executor.submit(self.scan_symbol, symbol): symbol
                 for symbol in self.symbols

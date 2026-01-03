@@ -64,8 +64,8 @@ class ScannerConfig:
 
     # Auto-discover top volume pairs
     auto_discover: bool = True
-    top_pairs_count: int = 50
-    min_volume_24h: float = 1_000_000  # Minimum 24h volume in USDT
+    top_pairs_count: int = 300  # Scan 300 coins
+    min_volume_24h: float = 100_000  # Lowered to include more pairs
 
     # Timeframes for analysis
     htf_timeframe: TimeFrame = TimeFrame.H4  # Higher timeframe for trend/POI
