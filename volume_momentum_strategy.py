@@ -679,6 +679,18 @@ class VolumeMomentumStrategy:
         elif vol_state.regime == MarketRegime.TRENDING_DOWN and vol_profile.price_vs_vwap == "BELOW":
             directions_to_check.append(("SHORT", "TREND_CONTINUATION", "Downtrend + below VWAP"))
 
+        # 7. Simple regime-based signal (fallback for trending markets)
+        if vol_state.regime == MarketRegime.TRENDING_UP:
+            directions_to_check.append(("LONG", "REGIME_TREND", f"Market regime: {vol_state.regime.value}"))
+        elif vol_state.regime == MarketRegime.TRENDING_DOWN:
+            directions_to_check.append(("SHORT", "REGIME_TREND", f"Market regime: {vol_state.regime.value}"))
+        elif vol_state.regime == MarketRegime.SQUEEZE:
+            # In squeeze, use OBV to determine direction
+            if vol_profile.obv_trend == "BULLISH":
+                directions_to_check.append(("LONG", "SQUEEZE_ACCUMULATION", "Squeeze with bullish OBV"))
+            else:
+                directions_to_check.append(("SHORT", "SQUEEZE_DISTRIBUTION", "Squeeze with bearish OBV"))
+
         # Evaluate each direction
         best_setup = None
         best_confidence = 0
@@ -698,7 +710,10 @@ class VolumeMomentumStrategy:
                 "RSI_OVERSOLD": 15,
                 "RSI_OVERBOUGHT": 15,
                 "MACD_CROSS": 20,
-                "TREND_CONTINUATION": 25
+                "TREND_CONTINUATION": 25,
+                "REGIME_TREND": 20,  # Simple trend following
+                "SQUEEZE_ACCUMULATION": 20,
+                "SQUEEZE_DISTRIBUTION": 20
             }.get(signal_type, 15)
 
             confidence = base_confidence
@@ -804,6 +819,9 @@ class VolumeMomentumStrategy:
                 f"SL: {best_setup.stop_loss:.6f} | "
                 f"Reasons: {', '.join(best_setup.reasons[:3])}"
             )
+        elif directions_to_check:
+            # Log highest confidence that didn't meet threshold
+            logger.debug(f"{symbol}: Best confidence was {best_confidence}, needed {self.min_confidence}")
 
         return best_setup
 
