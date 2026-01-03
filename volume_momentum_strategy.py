@@ -229,7 +229,7 @@ class VolumeAnalyzer:
             score -= 2
             reasons.append("⚠️ Volume climax - potential reversal")
 
-        confirmed = score >= 3
+        confirmed = score >= 2  # Lowered from 3 for more trades
         return confirmed, ", ".join(reasons)
 
 
@@ -498,7 +498,7 @@ class MomentumAnalyzer:
                 score += 2
                 reasons.append("Bearish RSI divergence")
 
-        confirmed = score >= 3
+        confirmed = score >= 2  # Lowered from 3
         return confirmed, ", ".join(reasons) if reasons else "No momentum signals"
 
 
@@ -599,9 +599,9 @@ class VolumeMomentumStrategy:
     """
 
     def __init__(self):
-        self.min_volume_ratio = 0.8  # Minimum volume vs average
-        self.min_confidence = 60  # Minimum confidence score
-        self.max_atr_percent = 5.0  # Max volatility for entry
+        self.min_volume_ratio = 0.5  # Lowered from 0.8
+        self.min_confidence = 50  # Lowered from 60
+        self.max_atr_percent = 8.0  # Increased from 5.0 for crypto volatility
 
     def analyze(self, df: pd.DataFrame, symbol: str) -> Optional[TradeSetup]:
         """
@@ -655,21 +655,51 @@ class VolumeMomentumStrategy:
         elif mom_state.ema_alignment == "BEARISH" and mom_state.rsi < 60 and mom_state.rsi > 30:
             directions_to_check.append(("SHORT", "MOMENTUM", "EMA alignment bearish"))
 
+        # 4. RSI oversold/overbought bounce
+        if mom_state.rsi < 35:
+            directions_to_check.append(("LONG", "RSI_OVERSOLD", f"RSI oversold at {mom_state.rsi:.0f}"))
+        elif mom_state.rsi > 65:
+            directions_to_check.append(("SHORT", "RSI_OVERBOUGHT", f"RSI overbought at {mom_state.rsi:.0f}"))
+
+        # 5. MACD crossover
+        if mom_state.macd_crossover == "BULLISH":
+            directions_to_check.append(("LONG", "MACD_CROSS", "MACD bullish crossover"))
+        elif mom_state.macd_crossover == "BEARISH":
+            directions_to_check.append(("SHORT", "MACD_CROSS", "MACD bearish crossover"))
+
+        # 6. Strong trend with pullback (price above VWAP in uptrend)
+        if vol_state.regime == MarketRegime.TRENDING_UP and vol_profile.price_vs_vwap == "ABOVE":
+            directions_to_check.append(("LONG", "TREND_CONTINUATION", "Uptrend + above VWAP"))
+        elif vol_state.regime == MarketRegime.TRENDING_DOWN and vol_profile.price_vs_vwap == "BELOW":
+            directions_to_check.append(("SHORT", "TREND_CONTINUATION", "Downtrend + below VWAP"))
+
         # Evaluate each direction
         best_setup = None
         best_confidence = 0
 
         for direction, signal_type, initial_reason in directions_to_check:
-            confidence = 0
+            # Base confidence from signal type
+            base_confidence = {
+                "SQUEEZE_BREAKOUT": 30,
+                "LIQUIDITY_SWEEP": 25,
+                "MOMENTUM": 20,
+                "RSI_OVERSOLD": 15,
+                "RSI_OVERBOUGHT": 15,
+                "MACD_CROSS": 20,
+                "TREND_CONTINUATION": 25
+            }.get(signal_type, 15)
+
+            confidence = base_confidence
             reasons = [f"{signal_type}: {initial_reason}"]
 
-            # REQUIRED: Volume confirmation
+            # Volume confirmation (preferred but not blocking)
             vol_confirmed, vol_reason = vol_analyzer.is_volume_confirmed(direction)
-            if not vol_confirmed:
-                logger.debug(f"{symbol} {direction}: Volume not confirmed - {vol_reason}")
-                continue
-            confidence += 25
-            reasons.append(f"Volume: {vol_reason}")
+            if vol_confirmed:
+                confidence += 25
+                reasons.append(f"Volume: {vol_reason}")
+            else:
+                confidence += 10  # Partial points even without full volume confirmation
+                reasons.append(f"Volume partial: {vol_reason}")
 
             # Momentum confirmation
             mom_confirmed, mom_reason = momentum_analyzer.is_momentum_confirmed(direction)
