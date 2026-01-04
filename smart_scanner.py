@@ -122,7 +122,7 @@ class SmartScanner:
             Spread as percentage
         """
         try:
-            orderbook = self.client.get_orderbook(symbol, depth=5)
+            orderbook = self.client.get_orderbook(symbol, depth=20)  # KuCoin only supports 20 or 100
             if orderbook and orderbook.get('bids') and orderbook.get('asks'):
                 best_bid = float(orderbook['bids'][0][0])
                 best_ask = float(orderbook['asks'][0][0])
@@ -158,11 +158,6 @@ class SmartScanner:
             if volume_24h < self.min_volume_24h:
                 return None
 
-            # Get spread
-            spread = self.calculate_spread(symbol)
-            if spread > self.max_spread_percent:
-                return None
-
             # Get candles for volatility analysis
             df = self.client.get_candles(symbol, TimeFrame.H4, limit=100)
             if df.empty or len(df) < 20:
@@ -181,26 +176,26 @@ class SmartScanner:
             df['range'] = (df['high'] - df['low']) / df['low'] * 100
             avg_range = df['range'].mean()
 
+            # Estimate spread from recent candles (bid-ask is typically a fraction of range)
+            # This avoids slow orderbook calls
+            estimated_spread = avg_range * 0.05  # Assume spread is ~5% of avg range
+
             # Calculate scores
             liquidity_score = min(100, (volume_24h / self.min_volume_24h) * 10)
             movement_score = min(100, (avg_range / 2) * 50)  # 2% range = 50 score
 
-            # Penalize high spread
-            spread_penalty = max(0, (spread / self.max_spread_percent) * 20)
-
-            # Overall score
-            overall_score = (liquidity_score * 0.3 + movement_score * 0.5) - spread_penalty
+            # Overall score (no spread penalty for now)
+            overall_score = (liquidity_score * 0.3 + movement_score * 0.5 + 20)  # Base 20 points
             overall_score = max(0, min(100, overall_score))
 
             # Can we trade 200 USDT without issues?
-            min_order_value = price * 10  # Assume min 10 units
-            can_trade = volume_24h > self.position_size * 100 and min_order_value < self.position_size
+            can_trade = volume_24h > self.position_size * 100
 
             return CoinMetrics(
                 symbol=symbol,
                 price=price,
                 volume_24h=volume_24h,
-                spread_percent=spread,
+                spread_percent=estimated_spread,
                 volatility_percent=volatility,
                 avg_candle_range=avg_range,
                 liquidity_score=liquidity_score,
