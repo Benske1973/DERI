@@ -1,0 +1,62 @@
+{
+  "balance": 511.61609599199994,
+  "trade_counter": 3,
+  "positions": [
+    {
+      "id": "T0001",
+      "symbol": "XPL/USDT",
+      "side": "LONG",
+      "entry_time": "2026-01-06 20:02:38.776466",
+      "entry_price": 0.20170150000000003,
+      "size": 200.0,
+      "quantity": 991.56426699851,
+      "stop_loss": 0.19147339014301276,
+      "take_profit": 0.22656652464246813,
+      "trailing_stop": 0.19147339014301276,
+      "trailing_activated": false,
+      "highest_price": 0.2015,
+      "signal_type": "BREAKOUT",
+      "entry_score": 90,
+      "entry_fee": 0.2,
+      "slippage_cost": 0.2
+    },
+    {
+      "id": "T0002",
+      "symbol": "BB/USDT",
+      "side": "LONG",
+      "entry_time": "2026-01-06 20:02:38.776758",
+      "entry_price": 0.07212205,
+      "size": 159.96,
+      "quantity": 2217.907006248436,
+      "stop_loss": 0.06896681060696688,
+      "take_profit": 0.0797579734825828,
+      "trailing_stop": 0.06896681060696688,
+      "trailing_activated": false,
+      "highest_price": 0.07205,
+      "signal_type": "BREAKOUT",
+      "entry_score": 75,
+      "entry_fee": 0.15996000000000002,
+      "slippage_cost": 0.15996000000000002
+    },
+    {
+      "id": "T0003",
+      "symbol": "XMR/USDT",
+      "side": "LONG",
+      "entry_time": "2026-01-06 20:02:38.777658",
+      "entry_price": 447.89745,
+      "size": 127.936008,
+      "quantity": 0.2856368304842995,
+      "stop_loss": 438.1077390702351,
+      "take_profit": 470.8056523244122,
+      "trailing_stop": 438.1077390702351,
+      "trailing_activated": false,
+      "highest_price": 447.45,
+      "signal_type": "BREAKOUT",
+      "entry_score": 70,
+      "entry_fee": 0.127936008,
+      "slippage_cost": 0.127936008
+    }
+  ],
+  "closed_trades": [],
+  "last_update": "2026-01-06 20:02:38.777672"
+}
