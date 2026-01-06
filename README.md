@@ -1,6 +1,12 @@
-# 🎯 MACD Money Map - Trading Bot
+# 🎯 MACD Money Map - Multi-Scanner Trading Bot
 
 A complete Python trading system implementing the **MACD Money Map** strategy with 3 interconnected systems for high-probability trade setups.
+
+**Features:**
+- 📡 Real-time WebSocket monitoring of **ALL KuCoin coins** (>50k volume)
+- 🔍 Triple timeframe analysis (Daily → 4H → 1H)
+- 🚨 Instant alerts when A+ setups appear
+- 💾 SQLite database for signal logging
 
 ## 📊 The 3 Systems
 
@@ -31,25 +37,32 @@ Filters bad trades and confirms winners.
 ## 🚀 Quick Start
 
 ```bash
+# Easy start menu
+python3 start_scanner.py
+
+# Or run directly:
+
 # 1. Initialize the database
-python init_db.py
+python3 init_db.py
 
-# 2. Run the morning scan
-python macd_money_map.py
+# 2. Multi-Scanner (ALL coins >50k volume, real-time)
+python3 macd_multi_scanner.py
 
-# 3. Continuous monitoring
-python macd_monitor.py
+# 3. Morning scan (one-time, top coins)
+python3 macd_money_map.py
 
-# 4. Visualize a specific symbol
-python macd_visualizer.py BTC/USDT
+# 4. Single coin analysis
+python3 -c "from macd_multi_scanner import full_macd_analysis; print(full_macd_analysis('BTC-USDT'))"
 ```
 
 ## 📁 Files
 
 | File | Description |
 |------|-------------|
-| `macd_money_map.py` | Main scanner with all 3 systems |
-| `macd_monitor.py` | Real-time monitoring with alerts |
+| `start_scanner.py` | **Easy start menu** |
+| `macd_multi_scanner.py` | **Real-time multi-scanner** (ALL coins >50k) |
+| `macd_money_map.py` | Morning scan with all 3 systems |
+| `macd_monitor.py` | Continuous monitoring with alerts |
 | `macd_visualizer.py` | Chart visualization of analysis |
 | `init_db.py` | Database initialization |
 | `check_status.py` | View current signal status |
@@ -57,28 +70,39 @@ python macd_visualizer.py BTC/USDT
 
 ## ⚙️ Configuration
 
-Edit `CONFIG` in `macd_money_map.py`:
+### Multi-Scanner (`macd_multi_scanner.py`)
 
 ```python
 CONFIG = {
-    'symbols': ['BTC/USDT', 'ETH/USDT', ...],
+    # Volume filter
+    'min_volume_24h': 50000,  # Minimum 50k USDT volume
+    
+    # Scanner settings
+    'price_change_threshold': 0.5,  # 0.5% move triggers analysis
+    'window_seconds': 60,           # Price change window
+    
+    # Timeframes
     'timeframes': {
         'trend': '1d',    # Daily for trend bias
-        'setup': '4h',    # 4H for setups
+        'setup': '4h',    # 4H for setups  
         'entry': '1h'     # 1H for entry
     },
+    
+    # MACD Settings
     'macd': {
         'fast': 12,
         'slow': 26,
         'signal': 9
     },
+    
+    # System 1 settings
     'trend_system': {
         'distance_threshold': 0.5,  # Distance from zero line
         'wait_candles': 2           # Candles to wait after crossover
     },
-    'risk': {
-        'risk_reward': 2.0          # 2R target
-    }
+    
+    # Alert cooldown
+    'alert_cooldown': 300  # Don't re-alert same coin within 5 min
 }
 ```
 
