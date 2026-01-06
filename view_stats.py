@@ -1,7 +1,10 @@
 # view_stats.py
 import sqlite3
+from pathlib import Path
 
-conn = sqlite3.connect('trading_bot.db')
+DB_PATH = Path(__file__).resolve().parent / "trading_bot.db"
+
+conn = sqlite3.connect(DB_PATH)
 c = conn.cursor()
 c.execute("SELECT * FROM trade_log")
 trades = c.fetchall()

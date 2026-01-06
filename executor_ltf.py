@@ -1,10 +1,19 @@
 import sqlite3
+import os
 import requests
 import pandas as pd
 import time
+from pathlib import Path
+
+DB_PATH = Path(__file__).resolve().parent / "trading_bot.db"
+
+LTF_CANDLE_TYPE = os.getenv("LTF_CANDLE_TYPE", "15min")  # KuCoin candle type, e.g. 15min
+LTF_POLL_INTERVAL_SECONDS = int(os.getenv("LTF_POLL_INTERVAL_SECONDS", "30"))
+SWING_LOOKBACK_CANDLES = int(os.getenv("SWING_LOOKBACK_CANDLES", "15"))
+SWING_SOURCE = os.getenv("SWING_SOURCE", "high").lower()  # high | close
 
 def check_ltf_confirmation():
-    conn = sqlite3.connect('trading_bot.db')
+    conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
     # Haal munten op die de zone hebben geraakt
     c.execute("SELECT symbol, ob_top, ob_bottom FROM signals WHERE status='TAPPED'")
@@ -12,12 +21,19 @@ def check_ltf_confirmation():
 
     for sym, ob_top, ob_bottom in active_targets:
         try:
-            url = f"https://api.kucoin.com/api/v1/market/candles?symbol={sym}&type=15min"
-            data = requests.get(url).json()['data']
+            url = f"https://api.kucoin.com/api/v1/market/candles?symbol={sym}&type={LTF_CANDLE_TYPE}"
+            resp = requests.get(url, timeout=15)
+            payload = resp.json()
+            data = payload["data"]
             df = pd.DataFrame(data, columns=['ts','o','c','h','l','v','a']).astype(float).iloc[::-1]
             
-            # 1. Swing High bepalen (Body Close Filter)
-            m15_high_to_break = df['h'].iloc[-15:-1].max()
+            # 1. Swing High bepalen (bron instelbaar: high of close)
+            if SWING_SOURCE == "close":
+                swing_series = df["c"]
+            else:
+                swing_series = df["h"]
+
+            m15_high_to_break = swing_series.iloc[-SWING_LOOKBACK_CANDLES:-1].max()
             current_close = df['c'].iloc[-1]
 
             # 2. De Body Close ChoCH check
@@ -48,4 +64,4 @@ def check_ltf_confirmation():
 if __name__ == "__main__":
     while True:
         check_ltf_confirmation()
-        time.sleep(30)
+        time.sleep(LTF_POLL_INTERVAL_SECONDS)

@@ -1,4 +1,18 @@
-import requests, pandas as pd, pandas_ta as ta, sqlite3, time
+import os
+import sqlite3
+import time
+from pathlib import Path
+
+import pandas as pd
+import pandas_ta as ta
+import requests
+
+DB_PATH = Path(__file__).resolve().parent / "trading_bot.db"
+
+DEFAULT_SYMBOLS = ["BTC-USDT", "ETH-USDT", "SOL-USDT", "AVAX-USDT", "DOT-USDT", "LINK-USDT", "MATIC-USDT"]
+HTF_CANDLE_TYPE = os.getenv("HTF_CANDLE_TYPE", "4h")  # KuCoin candle type, e.g. 4h, 1day
+SYMBOLS = [s.strip() for s in os.getenv("SYMBOLS", ",".join(DEFAULT_SYMBOLS)).split(",") if s.strip()]
+SCAN_INTERVAL_SECONDS = int(os.getenv("SCAN_INTERVAL_SECONDS", "900"))
 
 def detect_smc_setup(df):
     # Loop van nieuw naar oud
@@ -14,15 +28,15 @@ def detect_smc_setup(df):
     return None, 0, 0, 0, 0
 
 def run_scanner():
-    conn = sqlite3.connect('trading_bot.db')
+    conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
     # Selecteer een lijst met actieve paren
-    symbols = ['BTC-USDT', 'ETH-USDT', 'SOL-USDT', 'AVAX-USDT', 'DOT-USDT', 'LINK-USDT', 'MATIC-USDT']
-
-    for sym in symbols:
+    for sym in SYMBOLS:
         try:
-            url = f"https://api.kucoin.com/api/v1/market/candles?symbol={sym}&type=4h"
-            data = requests.get(url).json()['data']
+            url = f"https://api.kucoin.com/api/v1/market/candles?symbol={sym}&type={HTF_CANDLE_TYPE}"
+            resp = requests.get(url, timeout=15)
+            payload = resp.json()
+            data = payload["data"]
             df = pd.DataFrame(data, columns=['ts','o','c','h','l','v','a']).astype(float).iloc[::-1]
             
             # Trend filter
@@ -35,7 +49,9 @@ def run_scanner():
                 c.execute("INSERT OR REPLACE INTO signals (symbol, trend, fvg_top, fvg_bottom, ob_top, ob_bottom, status) VALUES (?, ?, ?, ?, ?, ?, ?)",
                           (sym, setup_type, ft, fb, ot, ob, 'SCANNING'))
                 print(f"🔎 POI opgeslagen voor {sym} (FVG: {fb}-{ft})")
-        except: continue
+        except Exception as e:
+            print(f"Scanner error bij {sym}: {e}")
+            continue
     
     conn.commit()
     conn.close()
@@ -44,4 +60,4 @@ if __name__ == "__main__":
     while True:
         print("Scannen naar nieuwe HTF POI's...")
         run_scanner()
-        time.sleep(900) # Elke 15 min
+        time.sleep(SCAN_INTERVAL_SECONDS)  # default: elke 15 min

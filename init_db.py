@@ -1,7 +1,10 @@
 import sqlite3
+from pathlib import Path
+
+DB_PATH = Path(__file__).resolve().parent / "trading_bot.db"
 
 def setup():
-    conn = sqlite3.connect('trading_bot.db')
+    conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
     
     # Tabel voor de huidige signalen/scans
