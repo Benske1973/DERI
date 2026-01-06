@@ -1,0 +1,7 @@
+# MACD Money Map - Required Dependencies
+ccxt>=4.0.0
+pandas>=2.0.0
+numpy>=1.24.0
+matplotlib>=3.7.0
+pandas_ta>=0.3.14b
+websockets>=11.0
