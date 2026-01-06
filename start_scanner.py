@@ -42,8 +42,15 @@ def run_multi_scanner():
     print("\n🚀 Starting Multi-Scanner...")
     print("   Monitoring ALL coins with >50k volume")
     print("   Press Ctrl+C to stop\n")
-    import sys
-    os.system(f'"{sys.executable}" macd_multi_scanner.py')
+    
+    # Import and run directly (no subprocess needed)
+    import asyncio
+    from macd_multi_scanner import main
+    
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        print("\n\n👋 Scanner gestopt")
 
 def run_morning_scan():
     """Run a one-time morning scan"""
@@ -126,9 +133,8 @@ def view_signals():
 
 def main():
     # Initialize database
-    import subprocess
-    import sys
-    subprocess.run([sys.executable, "init_db.py"], capture_output=True)
+    from init_db import setup
+    setup()
     
     while True:
         print_menu()
