@@ -1,0 +1,6 @@
+ccxt>=4.4.0
+pandas>=2.2.0
+pandas_ta>=0.3.14b0
+matplotlib>=3.9.0
+numpy>=2.0.0
+requests>=2.32.0
