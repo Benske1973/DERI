@@ -14,7 +14,7 @@
       "take_profit": 0.22656652464246813,
       "trailing_stop": 0.19147339014301276,
       "trailing_activated": false,
-      "highest_price": 0.2015,
+      "highest_price": 0.2019,
       "signal_type": "BREAKOUT",
       "entry_score": 90,
       "entry_fee": 0.2,
@@ -32,7 +32,7 @@
       "take_profit": 0.0797579734825828,
       "trailing_stop": 0.06896681060696688,
       "trailing_activated": false,
-      "highest_price": 0.07205,
+      "highest_price": 0.07313,
       "signal_type": "BREAKOUT",
       "entry_score": 75,
       "entry_fee": 0.15996000000000002,
@@ -58,5 +58,5 @@
     }
   ],
   "closed_trades": [],
-  "last_update": "2026-01-06 20:02:38.777672"
+  "last_update": "2026-01-06 20:06:45.161682"
 }
