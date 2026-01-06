@@ -42,7 +42,8 @@ def run_multi_scanner():
     print("\n🚀 Starting Multi-Scanner...")
     print("   Monitoring ALL coins with >50k volume")
     print("   Press Ctrl+C to stop\n")
-    os.system("python3 macd_multi_scanner.py")
+    import sys
+    os.system(f'"{sys.executable}" macd_multi_scanner.py')
 
 def run_morning_scan():
     """Run a one-time morning scan"""
@@ -126,7 +127,8 @@ def view_signals():
 def main():
     # Initialize database
     import subprocess
-    subprocess.run(["python3", "init_db.py"], capture_output=True)
+    import sys
+    subprocess.run([sys.executable, "init_db.py"], capture_output=True)
     
     while True:
         print_menu()
