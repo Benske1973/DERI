@@ -1,0 +1,8 @@
+ccxt
+matplotlib
+numpy
+pandas
+pandas_ta
+requests
+websockets
+
